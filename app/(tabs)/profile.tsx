@@ -1,5 +1,5 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -22,34 +22,29 @@ import { useColors } from "@/hooks/use-colors";
 import { startOAuthLogin } from "@/constants/oauth";
 import { SUBJECTS } from "@/lib/app-data";
 import { ro } from "@/lib/i18n";
-import {
-  DEFAULT_PREFERENCES,
-  loadPreferences,
-  savePreferences,
-  type Preferences,
-} from "@/lib/storage";
+import type { Preferences } from "@/lib/storage";
 import { useThemeContext } from "@/lib/theme-provider";
 import { useAuth } from "@/hooks/use-auth";
+import { useLearnerData } from "@/lib/learner-context";
 
 export default function ProfileScreen() {
   const colors = useColors();
   const { colorScheme, setColorScheme } = useThemeContext();
   const { user, loading: authLoading, logout } = useAuth({ autoFetch: true });
-  const [preferences, setPreferences] =
-    useState<Preferences>(DEFAULT_PREFERENCES);
+  const {
+    state: learnerState,
+    syncStatus,
+    updatePreferences: saveLearnerPreferences,
+  } = useLearnerData();
+  const preferences = learnerState.preferences;
   const [saved, setSaved] = useState(false);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [voice, setVoice] = useState(false);
   const [role, setRole] = useState<"Elev" | "Părinte">("Elev");
   const [avatarNotice, setAvatarNotice] = useState(false);
   const [premiumDetails, setPremiumDetails] = useState(false);
-  useEffect(() => {
-    loadPreferences().then(setPreferences);
-  }, []);
-  async function updatePreferences(patch: Partial<Preferences>) {
-    const next = { ...preferences, ...patch };
-    setPreferences(next);
-    await savePreferences(next);
+  function updatePreferences(patch: Partial<Preferences>) {
+    saveLearnerPreferences(patch);
     setSaved(true);
     setTimeout(() => setSaved(false), 1800);
   }
@@ -452,10 +447,17 @@ export default function ProfileScreen() {
           ) : user ? (
             <>
               <Text style={[styles.accountTitle, { color: colors.foreground }]}>
-                Cont Manus conectat
+                Cont conectat
               </Text>
               <Text style={[styles.accountBody, { color: colors.muted }]}>
                 {user.email ?? "Identitatea ta este conectată."}
+              </Text>
+              <Text style={[styles.accountBody, { color: colors.muted }]}>
+                {syncStatus === "synced"
+                  ? "Progres sincronizat cu contul."
+                  : syncStatus === "syncing"
+                    ? "Se sincronizează progresul și lecțiile…"
+                    : "Progres salvat pe acest dispozitiv; sincronizarea contului nu este disponibilă acum."}
               </Text>
               <Pressable
                 accessibilityRole="button"
@@ -470,11 +472,11 @@ export default function ProfileScreen() {
           ) : (
             <>
               <Text style={[styles.accountTitle, { color: colors.foreground }]}>
-                Păstrează-ți progresul
+                Creează-ți contul Elunariq
               </Text>
               <Text style={[styles.accountBody, { color: colors.muted }]}>
-                Conectează-te prin fluxul real Manus. Elunariq nu inventează un
-                formular local de parole.
+                Creează un cont sau conectează-te în siguranță. Lecțiile și
+                progresul se vor lega de cont după autentificare.
               </Text>
               <Pressable
                 accessibilityRole="button"
@@ -489,10 +491,10 @@ export default function ProfileScreen() {
                 }}
                 style={[
                   styles.oauthButton,
-                  { backgroundColor: colors.foreground },
+                  { backgroundColor: colors.primary },
                 ]}
               >
-                <Text style={styles.oauthText}>Continuă cu Manus</Text>
+                <Text style={styles.oauthText}>Creează cont / Conectare</Text>
                 <MaterialIcons name="arrow-forward" size={16} color="#FFFFFF" />
               </Pressable>
             </>

@@ -27,6 +27,7 @@ import {
 } from "@/components/bionis-ui";
 import { TutorMessageCard, UploadCard } from "@/components/tutor-components";
 import { useColors } from "@/hooks/use-colors";
+import { useLearnerData } from "@/lib/learner-context";
 import { SUBJECTS } from "@/lib/app-data";
 import { ro } from "@/lib/i18n";
 import { generateLearningPdf } from "@/lib/pdf";
@@ -60,6 +61,7 @@ function currentTimestamp(): number {
 
 export default function TutorScreen() {
   const colors = useColors();
+  const { recordTutorQuestion } = useLearnerData();
   const params = useLocalSearchParams<{ autoUpload?: string }>();
   const [subject, setSubject] = useState(SUBJECTS[0].label);
   const [agent, setAgent] = useState("Ghid socratic");
@@ -133,6 +135,7 @@ export default function TutorScreen() {
       createdAt: currentTimestamp(),
     };
     setMessages((current) => [...current, userMessage]);
+    recordTutorQuestion(subject);
     try {
       const live = await assistantMutation.mutateAsync({
         subject,

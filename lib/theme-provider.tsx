@@ -1,8 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { Appearance, View, useColorScheme as useSystemColorScheme } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Appearance, Platform, View } from "react-native";
 import { colorScheme as nativewindColorScheme, vars } from "nativewind";
 
 import { SchemeColors, type ColorScheme } from "@/constants/theme";
+
+const THEME_STORAGE_KEY = "elunariq.theme.v1";
 
 type ThemeContextValue = {
   colorScheme: ColorScheme;
@@ -12,12 +15,12 @@ type ThemeContextValue = {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const systemScheme = useSystemColorScheme() === "dark" ? "dark" : "light";
-  const [colorScheme, setColorSchemeState] = useState<ColorScheme>(systemScheme);
+  const [colorScheme, setColorSchemeState] = useState<ColorScheme>("light");
+  const [themeLoaded, setThemeLoaded] = useState(false);
 
   const applyScheme = useCallback((scheme: ColorScheme) => {
     nativewindColorScheme.set(scheme);
-    Appearance.setColorScheme?.(scheme);
+    if (Platform.OS !== "web") Appearance.setColorScheme?.(scheme);
     if (typeof document !== "undefined") {
       const root = document.documentElement;
       root.dataset.theme = scheme;
@@ -29,14 +32,33 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void AsyncStorage.getItem(THEME_STORAGE_KEY)
+      .then((saved) => {
+        if (!cancelled && (saved === "light" || saved === "dark")) {
+          setColorSchemeState(saved);
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setThemeLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const setColorScheme = useCallback((scheme: ColorScheme) => {
     setColorSchemeState(scheme);
+    void AsyncStorage.setItem(THEME_STORAGE_KEY, scheme).catch(() => undefined);
     applyScheme(scheme);
   }, [applyScheme]);
 
   useEffect(() => {
+    if (!themeLoaded) return;
     applyScheme(colorScheme);
-  }, [applyScheme, colorScheme]);
+  }, [applyScheme, colorScheme, themeLoaded]);
 
   const themeVariables = useMemo(
     () =>

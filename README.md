@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Elunariq Learning Assistant
 
 Elunariq is a portrait-first educational app for high-school students who need help understanding homework one step at a time. The managed mobile app uses Expo Router, React Native, TypeScript, NativeWind, tRPC, the starter Manus OAuth flow, AsyncStorage for local preferences/history, and a server-side tutor route that calls the starter LLM helper when a live provider is available.
@@ -53,3 +54,7 @@ Elunariq generează o fișă PDF cu noțiunile și formulele discutate în sesiu
 În profil apare planul propus de 49,99 lei/lună și beneficiile aflate în validare. Prima săptămână este documentată doar ca interval de 9–19 lei, deci nu este prezentată ca ofertă finală. Checkout-ul, verificarea server-side a drepturilor Premium și restaurarea/anularea achizițiilor trebuie conectate la platformele de billing alese înainte de lansare.
 
 Planul comercial menționat pentru produs este o propunere, nu un checkout activ: 9–19 lei pentru prima săptămână, apoi 49,99 lei/lună. Integrarea plăților nu este activată în această versiune.
+=======
+# AI-App-Tutor---Romanian-business
+..
+>>>>>>> 99581132ca397a1aa396c8a6d50d2aeed0f42855

@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, learnerStates, users } from "../drizzle/schema";
+import type { LearnerState } from "../shared/learning";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -89,4 +90,33 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+export async function getLearnerState(userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const result = await db
+    .select()
+    .from(learnerStates)
+    .where(eq(learnerStates.userId, userId))
+    .limit(1);
+
+  const saved = result[0];
+  return saved
+    ? { state: saved.state, updatedAt: saved.updatedAt.toISOString() }
+    : null;
+}
+
+export async function saveLearnerState(
+  userId: number,
+  state: LearnerState,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not configured");
+
+  await db
+    .insert(learnerStates)
+    .values({ userId, state })
+    .onDuplicateKeyUpdate({ set: { state, updatedAt: new Date() } });
+
+  return getLearnerState(userId);
+}

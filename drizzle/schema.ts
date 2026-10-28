@@ -1,4 +1,13 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import {
+  int,
+  json,
+  mysqlEnum,
+  mysqlTable,
+  text,
+  timestamp,
+  varchar,
+} from "drizzle-orm/mysql-core";
+import type { LearnerState } from "../shared/learning";
 
 /**
  * Core user table backing auth flow.
@@ -22,7 +31,18 @@ export const users = mysqlTable("users", {
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
+export const learnerStates = mysqlTable("learner_states", {
+  userId: int("userId")
+    .notNull()
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  state: json("state").$type<LearnerState>().notNull(),
+  updatedAt: timestamp("updatedAt")
+    .defaultNow()
+    .onUpdateNow()
+    .notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-// TODO: Add your tables here
