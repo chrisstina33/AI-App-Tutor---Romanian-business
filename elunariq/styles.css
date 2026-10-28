@@ -1,0 +1,15 @@
+
+/* Theme transition and readable light mode overrides */
+html,body,.glass-panel,.glass-chip,.site-header,.subject-card,.tutor-card,.tutor-note,.progress-card,.mini-progress,.test-card,.auth-card,.contact-card,input,textarea,select{transition:background-color .45s ease,color .45s ease,border-color .45s ease,box-shadow .45s ease}
+body.light{background:#d9d8ef;color:#17152e}
+body.light .backdrop{background:linear-gradient(125deg,#6b53c7 0%,#238e9b 48%,#c86d32 100%)}
+body.light .backdrop:after{background:rgba(241,239,255,.28)}
+body.light .glass-panel{background:rgba(255,255,255,.68);border-color:rgba(255,255,255,.82);color:#17152e}
+body.light .glass-chip{background:rgba(255,255,255,.62);border-color:rgba(58,49,105,.22);color:#17152e}
+body.light .desktop-nav a,body.light .text-button,body.light .brand{color:#17152e}
+body.light .brand-mark{color:#fff}
+body.light .hero-lede,body.light .muted,body.light .preview-top,body.light .tutor-toolbar,body.light .subject-card p,body.light .test-card p,body.light .contact-card p{color:#403b62}
+body.light .preview-message,body.light .chat-message,body.light .chat-composer{background:rgba(255,255,255,.46);border-color:rgba(58,49,105,.22)}
+body.light .preview-formula{color:#17152e;border-color:rgba(58,49,105,.2)}
+body.light .preview-formula span{color:#9a4d16}
+@media(prefers-reduced-motion:reduce){html,body,.glass-panel,.glass-chip,.site-header,.subject-card,.tutor-card,.tutor-note,.progress-card,.mini-progress,.test-card,.auth-card,.contact-card,input,textarea,select{transition:none}}

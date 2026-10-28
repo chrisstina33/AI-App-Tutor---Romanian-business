@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="ro">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#15132d" />
+    <meta name="description" content="Elunariq explică materiile școlare pas cu pas, în limba română." />
+    <title>Elunariq — Învață următorul pas</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <style id="elunariq-styles">
+
+/* Theme transition and readable light mode overrides */
+html,body,.glass-panel,.glass-chip,.site-header,.subject-card,.tutor-card,.tutor-note,.progress-card,.mini-progress,.test-card,.auth-card,.contact-card,input,textarea,select{transition:background-color .45s ease,color .45s ease,border-color .45s ease,box-shadow .45s ease}
+body.light{background:#d9d8ef;color:#17152e}
+body.light .backdrop{background:linear-gradient(125deg,#6b53c7 0%,#238e9b 48%,#c86d32 100%)}
+body.light .backdrop:after{background:rgba(241,239,255,.28)}
+body.light .glass-panel{background:rgba(255,255,255,.68);border-color:rgba(255,255,255,.82);color:#17152e}
+body.light .glass-chip{background:rgba(255,255,255,.62);border-color:rgba(58,49,105,.22);color:#17152e}
+body.light .desktop-nav a,body.light .text-button,body.light .brand{color:#17152e}
+body.light .brand-mark{color:#fff}
+body.light .hero-lede,body.light .muted,body.light .preview-top,body.light .tutor-toolbar,body.light .subject-card p,body.light .test-card p,body.light .contact-card p{color:#403b62}
+body.light .preview-message,body.light .chat-message,body.light .chat-composer{background:rgba(255,255,255,.46);border-color:rgba(58,49,105,.22)}
+body.light .preview-formula{color:#17152e;border-color:rgba(58,49,105,.2)}
+body.light .preview-formula span{color:#9a4d16}
+@media(prefers-reduced-motion:reduce){html,body,.glass-panel,.glass-chip,.site-header,.subject-card,.tutor-card,.tutor-note,.progress-card,.mini-progress,.test-card,.auth-card,.contact-card,input,textarea,select{transition:none}}
+
+    </style>
+    <style>
+      html,body{background:#15132d;color:#fff}
+      body{background-image:radial-gradient(circle at 8% 18%,#7f5af0 0 12%,transparent 35%),radial-gradient(circle at 88% 20%,#2cb1bc 0 10%,transparent 34%),radial-gradient(circle at 55% 100%,#ff8e3c 0 9%,transparent 32%);background-attachment:fixed}
+      .glass-panel{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.35);box-shadow:0 24px 70px rgba(13,10,40,.28)}
+      .primary-button{background:#7f5af0;color:#fff}
+      .glass-chip{background:rgba(255,255,255,.2);color:#fff}
+      button{font:inherit;color:inherit;cursor:pointer}
+      .primary-button{display:inline-flex;align-items:center;justify-content:center;gap:9px;border:1px solid rgba(255,255,255,.35);border-radius:15px;padding:13px 17px;font-weight:800;box-shadow:0 12px 28px rgba(127,90,240,.35)}
+      .glass-chip{display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:8px 12px;border:1px solid rgba(255,255,255,.38)}
+      .icon-button{width:38px;height:38px;justify-content:center;padding:0}
+      .text-button,.quiet-link{border:0;background:transparent;text-decoration:none;padding:8px;font-weight:700}
+      .desktop-nav{display:flex;gap:20px;margin-right:auto}.desktop-nav a{color:#fff;text-decoration:none;font-size:14px;opacity:.9}
+      .brand{display:flex;align-items:center;gap:9px;color:#fff;text-decoration:none;font-weight:800;font-size:21px}.brand-mark{width:30px;height:30px;border-radius:11px;display:grid;place-items:center;background:#7f5af0;color:#fff}
+      input,textarea,select{font:inherit;color:inherit;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.4);border-radius:13px;padding:11px 13px}button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid rgba(255,255,255,.8);outline-offset:3px}
+      html,body,.glass-panel,.glass-chip,button,input,textarea,select{transition:background-color .45s ease,color .45s ease,border-color .45s ease,box-shadow .45s ease}
+      body.light{background:#d9d8ef;color:#17152e;background-image:radial-gradient(circle at 8% 18%,#6b53c7 0 12%,transparent 35%),radial-gradient(circle at 88% 20%,#238e9b 0 10%,transparent 34%),radial-gradient(circle at 55% 100%,#c86d32 0 9%,transparent 32%)}
+      body.light .glass-panel{background:rgba(255,255,255,.68);border-color:rgba(255,255,255,.82);color:#17152e}
+      body.light .glass-chip{background:rgba(255,255,255,.62);border-color:rgba(58,49,105,.22);color:#17152e}
+      body.light .desktop-nav a,body.light .text-button,body.light .brand{color:#17152e}
+      body.light .brand-mark,.light .primary-button{color:#fff}
+      body.light .muted,body.light .hero-lede,body.light .subject-card p,body.light .test-card p,body.light .contact-card p{color:#403b62}
+      @media(prefers-reduced-motion:reduce){html,body,.glass-panel,.glass-chip,button,input,textarea,select{transition:none}}
+    </style>
+  </head>
+  <body>
+    <div class="backdrop" aria-hidden="true"><span class="blob blob-violet"></span><span class="blob blob-teal"></span><span class="blob blob-orange"></span></div>
+    <header class="site-header glass-panel">
+      <a class="brand" href="#hero" aria-label="Elunariq, pagina principală"><span class="brand-mark">E</span><span>elunariq</span></a>
+      <nav class="desktop-nav" aria-label="Navigație principală">
+        <a href="#tutor">Tutor</a><a href="#progress">Progres</a><a href="#tests">Teste</a><a href="#contact">Contact</a>
+      </nav>
+      <div class="header-actions">
+        <button class="icon-button glass-chip" data-action="theme" aria-label="Schimbă tema" title="Schimbă tema"><i data-lucide="sun"></i></button>
+        <button class="text-button" data-action="open-auth" data-auth-mode="signin">Intră în cont</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="hero" class="hero section-shell">
+        <div class="hero-copy">
+          <p class="eyebrow">ÎNVĂȚARE CLARĂ, ÎN ROMÂNĂ</p>
+          <h1>Nu primi doar răspunsul. Înțelege pasul următor.</h1>
+          <p class="hero-lede">Elunariq te ajută la matematică, fizică, chimie, biologie și română. Îți explică pe scurt, îți pune o întrebare și așteaptă să încerci.</p>
+          <div class="hero-actions"><button class="primary-button" data-action="focus-tutor"><i data-lucide="message-circle"></i> Vorbește cu tutorul</button><a class="quiet-link" href="#subjects">Alege o materie <i data-lucide="arrow-down"></i></a></div>
+          <p class="microcopy"><i data-lucide="shield-check"></i> Modul demonstrativ nu inventează analizarea fișierelor.</p>
+        </div>
+        <div class="hero-preview glass-panel glass-panel-strong" aria-label="Previzualizare tutor">
+          <div class="preview-top"><span class="status-dot"></span><span>Tutor ghidat · răspuns pe rând</span><i data-lucide="more-horizontal"></i></div>
+          <div class="preview-message"><span class="message-label">Elunariq</span><strong>Care este primul lucru pe care îl observi în problemă?</strong><p>Nu sar la rezultat. Vreau să verificăm ideea împreună.</p></div>
+          <div class="preview-formula">a + b = c <span>→</span> a = c − b</div>
+          <div class="preview-chip-row"><span class="glass-chip">Un indiciu</span><span class="glass-chip">O întrebare</span></div>
+        </div>
+      </section>
+
+      <section id="subjects" class="section-shell content-section">
+        <div class="section-heading"><div><p class="eyebrow">ALEGERE RAPIDĂ</p><h2>De unde vrei să începi?</h2></div><div class="search-wrap glass-panel"><i data-lucide="search"></i><input id="search-input" type="search" placeholder="Caută topic, materie sau lecție" aria-label="Caută topic, materie sau lecție" /></div></div>
+        <div id="subject-list" class="subject-grid" aria-live="polite"></div>
+      </section>
+
+      <section id="tutor" class="section-shell content-section">
+        <div class="section-heading"><div><p class="eyebrow">TUTOR ELUNARIQ</p><h2>Începi cu întrebarea ta.</h2></div><span class="glass-chip">Un pas · o întrebare</span></div>
+        <div class="tutor-layout">
+          <div class="tutor-card glass-panel glass-panel-strong">
+            <div class="tutor-toolbar"><label for="tutor-subject">Materie</label><select id="tutor-subject" class="glass-chip"><option>Matematică</option><option>Fizică</option><option>Chimie</option><option>Biologie</option><option>Română</option></select></div>
+            <div id="chat-log" class="chat-log" aria-live="polite"><div class="chat-message assistant"><span class="message-label">Elunariq</span><p>Scrie problema sau spune ce ai încercat. Îți voi da un singur pas și apoi te întreb ce observi.</p></div></div>
+            <form id="chat-form" class="chat-composer"><label class="sr-only" for="chat-input">Întrebarea ta</label><input id="chat-input" autocomplete="off" placeholder="Scrie întrebarea ta…" /><button class="send-button" type="submit" aria-label="Trimite întrebarea"><i data-lucide="send"></i></button></form>
+            <div class="quick-prompts"><button class="glass-chip" data-prompt="Dă-mi un indiciu, fără soluția completă.">Dă-mi un indiciu</button><button class="glass-chip" data-prompt="Explică ideea principală și pune-mi o întrebare.">Explică ideea</button><button class="glass-chip" data-prompt="Dă-mi un exercițiu asemănător.">Exersează</button></div>
+          </div>
+          <aside class="tutor-note glass-panel"><i data-lucide="graduation-cap"></i><h3>Înveți activ</h3><p>Răspunsul complet rămâne ascuns până când îl ceri. Asta lasă loc pentru gândire, nu pentru copiere.</p><div class="note-rule"></div><p class="muted">Formulele sunt păstrate în notație LaTeX, de exemplu \(a+b=c\).</p></aside>
+        </div>
+      </section>
+
+      <section id="progress" class="section-shell content-section">
+        <div class="section-heading"><div><p class="eyebrow">RITMUL TĂU</p><h2>Vezi ce ai construit.</h2></div><span class="glass-chip">Date locale demonstrative</span></div>
+        <div class="progress-layout"><div class="progress-card glass-panel glass-panel-strong"><div class="progress-number"><strong id="progress-value">0</strong><span>%</span></div><div><h3>Obiectivul săptămânii</h3><p>Nicio sesiune nu este sincronizată încă.</p></div><div class="progress-track"><span id="progress-fill"></span></div></div><div id="progress-subjects" class="progress-subjects"></div></div>
+      </section>
+
+      <section id="tests" class="section-shell content-section">
+        <div class="section-heading"><div><p class="eyebrow">RECAPITULARE</p><h2>Teste săptămânale, fără presiune.</h2></div><button class="primary-button small" data-action="start-test"><i data-lucide="file-check-2"></i> Începe testul</button></div>
+        <div class="test-card glass-panel"><div class="test-icon"><i data-lucide="clipboard-check"></i></div><div><h3>Test mixt · 5 întrebări</h3><p>Primești feedback după fiecare răspuns și o recapitulare la final.</p></div><span class="glass-chip">Întrebări ghidate</span></div>
+      </section>
+
+      <section id="auth" class="section-shell content-section auth-section" hidden>
+        <div class="auth-card glass-panel glass-panel-strong"><div class="section-heading"><div><p class="eyebrow">CONTUL TĂU</p><h2 id="auth-title">Intră în Elunariq.</h2></div><button class="icon-button glass-chip" data-action="close-auth" aria-label="Închide autentificarea"><i data-lucide="x"></i></button></div><form id="auth-form" class="auth-form"><label for="auth-email">Email</label><input id="auth-email" type="email" required placeholder="nume@exemplu.ro" /><label for="auth-password">Parolă</label><input id="auth-password" type="password" required minlength="6" placeholder="Minimum 6 caractere" /><button class="primary-button" type="submit" id="auth-submit">Intră în cont</button></form><p id="auth-note" class="muted">Demo local: nu trimitem parola nicăieri.</p><button class="quiet-link auth-switch" data-action="toggle-auth">Nu ai cont? Creează unul.</button></div>
+      </section>
+
+      <section id="contact" class="section-shell content-section contact-section">
+        <div class="contact-card glass-panel glass-panel-strong"><div><p class="eyebrow">CONTACT</p><h2>Ai o întrebare despre Elunariq?</h2><p>Scrie-ne ce ai vrea să înveți mai ușor. Răspundem clar și fără promisiuni vagi.</p></div><form id="contact-form" class="contact-form"><label class="sr-only" for="contact-email">Email</label><input id="contact-email" type="email" required placeholder="Emailul tău" /><label class="sr-only" for="contact-message">Mesaj</label><textarea id="contact-message" required rows="3" placeholder="Mesajul tău"></textarea><button class="primary-button" type="submit"><i data-lucide="mail"></i> Trimite mesajul</button></form></div>
+      </section>
+    </main>
+    <footer class="site-footer"><span>elunariq</span><span>Învață următorul pas.</span></footer>
+    <dialog id="test-dialog" class="test-dialog glass-panel">
+      <button class="icon-button glass-chip close-test" data-action="close-test" aria-label="Închide testul"><i data-lucide="x"></i></button>
+      <p class="eyebrow">TEST SĂPTĂMÂNAL</p><h2>Care este primul pas?</h2>
+      <p class="muted">Pentru \(2x+5=17\), ce operație te ajută să izolezi termenul cu necunoscuta?</p>
+      <div class="test-options"><button class="glass-chip" data-test-answer="wrong">Înmulțesc cu 5</button><button class="glass-chip" data-test-answer="right">Scad 5 din ambele părți</button><button class="glass-chip" data-test-answer="wrong">Împart direct la 2</button></div>
+      <p id="test-feedback" class="test-feedback" aria-live="polite"></p>
+    </dialog>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="https://unpkg.com/lucide@0.468.0"></script>
+    <script>
+const subjects = [
+  { name: "Matematică", description: "Ecuații, funcții și raționament.", icon: "sigma" },
+  { name: "Fizică", description: "Formule, unități și fenomene.", icon: "atom" },
+  { name: "Chimie", description: "Reacții și legături explicate.", icon: "flask-conical" },
+  { name: "Biologie", description: "Procese, sisteme și concepte.", icon: "leaf" },
+  { name: "Română", description: "Texte, idei și argumentare.", icon: "book-open" },
+];
+const demoResponses = {
+  hint: "Privește operația care este cel mai departe de necunoscută. Aplică operația inversă pe ambele părți. Ce obții după acest singur pas?",
+  concept: "O ecuație rămâne echilibrată dacă faci aceeași operație pe ambele părți. În LaTeX: \\(a+b=c \\Rightarrow a=c-b\\). Ce operație inversă observi în problema ta?",
+  practice: "Încearcă exercițiul \\(2x+5=17\\). Nu căuta rezultatul complet. Ce ai elimina mai întâi și de ce?",
+  default: "Am înțeles. Înainte să continui, spune-mi ce date sunt cunoscute și ce trebuie aflat. Care este primul lucru pe care îl observi?",
+};
+const state = { subject: "Toate", query: "", progress: 0, authMode: "signin" };
+const $ = (selector) => document.querySelector(selector);
+const $$ = (selector) => [...document.querySelectorAll(selector)];
+const escapeHtml = (value) => String(value).replace(/[&<>\"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[char]));
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function refreshIcons() { if (window.lucide) window.lucide.createIcons({ attrs: { "stroke-width": 1.8 } }); }
+function showToast(message) { const toast = $("#toast"); toast.textContent = message; toast.classList.add("visible"); window.clearTimeout(showToast.timer); showToast.timer = window.setTimeout(() => toast.classList.remove("visible"), 3500); }
+function saveState() { localStorage.setItem("elunariq.website.v2", JSON.stringify({ theme: document.body.classList.contains("light") ? "light" : "dark", progress: state.progress })); }
+function loadState() { try { const saved = JSON.parse(localStorage.getItem("elunariq.website.v2") || "{}"); if (saved.theme === "light") document.body.classList.add("light"); if (typeof saved.progress === "number") state.progress = saved.progress; } catch { /* demo state is optional */ } }
+function renderSubjects() {
+  const normalized = state.query.trim().toLocaleLowerCase("ro");
+  const visible = subjects.filter((subject) => !normalized || `${subject.name} ${subject.description}`.toLocaleLowerCase("ro").includes(normalized));
+  $("#subject-list").innerHTML = visible.length ? visible.map((subject) => `<button class="subject-card glass-panel" data-subject="${subject.name}" aria-label="Alege materia ${subject.name}"><span class="subject-icon"><i data-lucide="${subject.icon}"></i></span><span><h3>${subject.name}</h3><p>${subject.description}</p></span><span class="glass-chip">Alege</span></button>`).join("") : `<div class="glass-panel" style="padding:20px;grid-column:1/-1"><strong>Nu am găsit încă acest topic.</strong><p class="muted">Încearcă numele unei materii sau al unei lecții.</p></div>`;
+  $$("[data-subject]").forEach((button) => button.addEventListener("click", () => { const name = button.dataset.subject; $("#tutor-subject").value = name; document.querySelector("#tutor").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" }); showToast(`${name} este selectată.`); }));
+  refreshIcons();
+}
+function renderProgress() {
+  $("#progress-value").textContent = state.progress;
+  $("#progress-fill").style.width = `${state.progress}%`;
+  $("#progress-subjects").innerHTML = subjects.slice(0, 4).map((subject) => `<article class="mini-progress glass-panel"><header><span>${subject.name}</span><span>Disponibilă</span></header><p>${subject.description}</p><div class="mini-track"><span style="width:0%"></span></div></article>`).join("");
+}
+function addMessage(role, text) { const message = document.createElement("div"); message.className = `chat-message ${role}`; if (role === "assistant") { message.innerHTML = `<span class="message-label">Elunariq</span><p></p>`; message.querySelector("p").textContent = text; } else { message.innerHTML = `<p>${escapeHtml(text)}</p>`; } $("#chat-log").appendChild(message); message.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "nearest" }); return message; }
+function replyFor(text) { const normalized = text.toLocaleLowerCase("ro"); if (normalized.includes("indiciu") || normalized.includes("hint")) return demoResponses.hint; if (normalized.includes("idee") || normalized.includes("concept")) return demoResponses.concept; if (normalized.includes("exerci") || normalized.includes("practic")) return demoResponses.practice; return demoResponses.default; }
+function revealReply(node, text) { const target = node.querySelector("p"); if (reduceMotion) { target.textContent = text; return; } const words = text.split(" "); let index = 0; const timer = window.setInterval(() => { target.textContent += `${index ? " " : ""}${words[index]}`; index += 1; if (index >= words.length) window.clearInterval(timer); }, 34); }
+function submitTutor(text) { const value = text.trim(); if (!value) return; addMessage("user", value); $("#chat-input").value = ""; const pending = addMessage("assistant", "Scriu următorul pas…"); pending.classList.add("pending"); window.setTimeout(() => { pending.classList.remove("pending"); revealReply(pending, replyFor(value)); }, reduceMotion ? 0 : 520); }
+function toggleTheme() { document.body.classList.toggle("light"); const icon = $("[data-action=theme] i"); if (icon) icon.setAttribute("data-lucide", document.body.classList.contains("light") ? "moon" : "sun"); refreshIcons(); saveState(); showToast(document.body.classList.contains("light") ? "Tema luminoasă este activă." : "Tema întunecată este activă."); }
+function openAuth(mode = "signin") { state.authMode = mode; $("#auth").hidden = false; $("#auth-title").textContent = mode === "signup" ? "Creează contul Elunariq." : "Intră în Elunariq."; $("#auth-submit").textContent = mode === "signup" ? "Creează contul" : "Intră în cont"; $("#auth-note").textContent = "Demo local: nu trimitem parola nicăieri."; $("#auth").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" }); }
+function startTest() { $("#test-feedback").textContent = ""; $("#test-dialog").showModal(); refreshIcons(); }
+function bind() {
+  $("[data-action=theme]").addEventListener("click", toggleTheme);
+  $$('[data-action="focus-tutor"]').forEach((button) => button.addEventListener("click", () => $("#tutor").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" })));
+  $$('[data-action="open-auth"]').forEach((button) => button.addEventListener("click", () => openAuth(button.dataset.authMode)));
+  $("[data-action=close-auth]").addEventListener("click", () => { $("#auth").hidden = true; });
+  $("[data-action=toggle-auth]").addEventListener("click", () => openAuth(state.authMode === "signin" ? "signup" : "signin"));
+  $("[data-action=start-test]").addEventListener("click", startTest);
+  $("[data-action=close-test]").addEventListener("click", () => $("#test-dialog").close());
+  $$("[data-test-answer]").forEach((button) => button.addEventListener("click", () => { const correct = button.dataset.testAnswer === "right"; $("#test-feedback").textContent = correct ? "Corect. Ai ales operația care păstrează egalitatea." : "Nu încă. Gândește-te la operația inversă și încearcă din nou."; if (correct) { state.progress = Math.min(100, Math.max(10, state.progress + 10)); renderProgress(); saveState(); } }));
+  $("#search-input").addEventListener("input", (event) => { state.query = event.target.value; renderSubjects(); });
+  $("#chat-form").addEventListener("submit", (event) => { event.preventDefault(); submitTutor($("#chat-input").value); });
+  $$("[data-prompt]").forEach((button) => button.addEventListener("click", () => submitTutor(button.dataset.prompt)));
+  $("#auth-form").addEventListener("submit", (event) => { event.preventDefault(); $("#auth-note").textContent = state.authMode === "signup" ? "Cont demo creat. Datele rămân doar în această sesiune." : "Ai intrat în contul demo local."; showToast("Acțiune demo finalizată."); });
+  $("#contact-form").addEventListener("submit", (event) => { event.preventDefault(); event.target.reset(); showToast("Mesajul demo a fost pregătit."); });
+  if (!reduceMotion) $$(".glass-panel").forEach((panel) => panel.addEventListener("pointermove", (event) => { const rect = panel.getBoundingClientRect(); const x = (event.clientX - rect.left) / rect.width - .5; const y = (event.clientY - rect.top) / rect.height - .5; panel.style.transform = `perspective(900px) rotateX(${(-y * 4).toFixed(2)}deg) rotateY(${(x * 4).toFixed(2)}deg)`; }));
+  if (!reduceMotion) $$(".glass-panel").forEach((panel) => panel.addEventListener("pointerleave", () => { panel.style.transform = ""; }));
+}
+loadState();
+renderSubjects();
+renderProgress();
+bind();
+refreshIcons();
+
+    </script>
+  </body>
+</html>
