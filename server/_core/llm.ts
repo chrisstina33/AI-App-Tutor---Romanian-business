@@ -207,6 +207,24 @@ const normalizeToolChoice = (
 };
 
 const resolveApiConfig = (model?: string) => {
+  const openRouterConfig =
+    model === "gpt-5-mini"
+      ? { apiKey: ENV.openRouterGpt5MiniKey || ENV.openRouterApiKey, model: ENV.openRouterGpt5MiniModel }
+      : model === "gpt-5"
+        ? { apiKey: ENV.openRouterGpt5Key || ENV.openRouterApiKey, model: ENV.openRouterGpt5Model }
+        : model === "gpt-5.5"
+          ? { apiKey: ENV.openRouterGpt55Key || ENV.openRouterApiKey, model: ENV.openRouterGpt55Model }
+          : undefined;
+
+  if (openRouterConfig?.apiKey) {
+    return {
+      url: "https://openrouter.ai/api/v1/chat/completions",
+      apiKey: openRouterConfig.apiKey,
+      provider: "openrouter" as const,
+      requestModel: openRouterConfig.model,
+    };
+  }
+
   const openAiKey =
     model === "gpt-5-mini"
       ? ENV.openAiGpt5MiniKey
@@ -221,6 +239,7 @@ const resolveApiConfig = (model?: string) => {
       url: "https://api.openai.com/v1/chat/completions",
       apiKey: openAiKey,
       provider: "openai" as const,
+      requestModel: model,
     };
   }
 
@@ -230,6 +249,7 @@ const resolveApiConfig = (model?: string) => {
       : "https://forge.manus.im/v1/chat/completions",
     apiKey: ENV.forgeApiKey,
     provider: "forge" as const,
+    requestModel: model,
   };
 };
 
@@ -369,7 +389,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   };
 
   if (model) {
-    payload.model = model;
+    payload.model = apiConfig.requestModel ?? model;
   }
 
   if (tools && tools.length > 0) {
@@ -395,7 +415,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.thinking = thinking;
   }
   if (reasoning) {
-    if (apiConfig.provider === "openai") {
+    if (apiConfig.provider !== "forge") {
       if (typeof reasoning.effort === "string") {
         payload.reasoning_effort = reasoning.effort;
       }
@@ -422,6 +442,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
       headers: {
         "content-type": "application/json",
         authorization: `Bearer ${apiConfig.apiKey}`,
+        ...(apiConfig.provider === "openrouter" ? { "X-Title": "Elunariq Learning Assistant" } : {}),
       },
       body: JSON.stringify(payload),
     });
