@@ -50,7 +50,6 @@ const INITIAL_MESSAGE: TutorMessage = {
   id: "welcome",
   role: "assistant",
   mode: "guided",
-  provider: "demo",
   createdAt: Date.now(),
   text: "## Începem cu primul pas\n\nScrie enunțul exact sau spune-mi ce ai încercat. Nu îți dau rezultatul din prima. Vreau să înțeleg cum gândești și să îți pun întrebarea potrivită.",
 };
@@ -145,12 +144,7 @@ export default function TutorScreen() {
       });
       await addReply(live, requestedMode);
     } catch {
-      const demo = await getDemoReply({
-        subject,
-        mode: requestedMode,
-        question,
-        history,
-      });
+      const demo = await getDemoReply();
       await addReply(demo, requestedMode);
     } finally {
       setPending(false);
@@ -293,27 +287,6 @@ export default function TutorScreen() {
             <MaterialIcons name="expand-more" size={18} color={colors.muted} />
           </Pressable>
         </View>
-        <SurfaceCard style={styles.diagramCard}>
-          <Text style={[styles.diagramLabel, { color: colors.muted }]}>
-            MODEL DE GÂNDIRE
-          </Text>
-          <View style={styles.diagramRow}>
-            <Text style={[styles.diagramFormula, { color: colors.foreground }]}>
-              a + b = c
-            </Text>
-            <MaterialIcons
-              name="arrow-forward"
-              size={17}
-              color={colors.primary}
-            />
-            <Text style={[styles.diagramFormula, { color: colors.primary }]}>
-              a = c − b
-            </Text>
-          </View>
-          <Text style={[styles.diagramHint, { color: colors.muted }]}>
-            Aplică aceeași operație pe ambele părți.
-          </Text>
-        </SurfaceCard>
         {showSubjectPicker ? (
           <SurfaceCard style={styles.pickerCard}>
             <Text style={[styles.pickerLabel, { color: colors.muted }]}>
@@ -616,21 +589,6 @@ const styles = StyleSheet.create({
   },
   selectorText: { flex: 1, fontSize: 11, fontWeight: "800" },
   agentDot: { width: 8, height: 8, borderRadius: 4 },
-  diagramCard: { padding: 12, marginBottom: 10 },
-  diagramLabel: {
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 1.1,
-    marginBottom: 8,
-  },
-  diagramRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  diagramFormula: { fontFamily: "monospace", fontSize: 15, fontWeight: "800" },
-  diagramHint: { fontSize: 10, marginTop: 7 },
   pickerCard: { padding: 13, marginBottom: 10 },
   pickerLabel: {
     fontSize: 10,
