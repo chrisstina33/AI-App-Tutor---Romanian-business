@@ -356,6 +356,12 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     max_completion_tokens,
   } = params;
   const apiConfig = resolveApiConfig(model);
+  if (!apiConfig.apiKey) {
+    console.error("[LLM] Missing API key for model", {
+      model: model ?? "default",
+      provider: apiConfig.provider,
+    });
+  }
   assertApiKey(apiConfig.apiKey);
 
   const payload: Record<string, unknown> = {
@@ -409,18 +415,46 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.response_format = normalizedResponseFormat;
   }
 
-  const response = await fetchWithBackoff(apiConfig.url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${apiConfig.apiKey}`,
-    },
-    body: JSON.stringify(payload),
-  });
+  let response: Response;
+  try {
+    response = await fetchWithBackoff(apiConfig.url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${apiConfig.apiKey}`,
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    console.error("[LLM] Provider network request failed", {
+      model: model ?? "default",
+      provider: apiConfig.provider,
+      errorName: error instanceof Error ? error.name : "unknown",
+    });
+    throw error;
+  }
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`LLM invoke failed: ${response.status} ${response.statusText} – ${errorText}`);
+    let errorCode = "unknown";
+    let errorType = "unknown";
+    try {
+      const errorBody = JSON.parse(errorText) as {
+        error?: { code?: unknown; type?: unknown };
+      };
+      if (typeof errorBody.error?.code === "string") errorCode = errorBody.error.code;
+      if (typeof errorBody.error?.type === "string") errorType = errorBody.error.type;
+    } catch {
+      // The provider did not return a JSON error body.
+    }
+    console.error("[LLM] Provider rejected request", {
+      model: model ?? "default",
+      provider: apiConfig.provider,
+      status: response.status,
+      errorCode,
+      errorType,
+    });
+    throw new Error(`LLM invoke failed with status ${response.status} (${errorCode})`);
   }
 
   return (await response.json()) as InvokeResult;
