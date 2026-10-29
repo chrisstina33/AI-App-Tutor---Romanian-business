@@ -206,14 +206,36 @@ const normalizeToolChoice = (
   return toolChoice;
 };
 
-const resolveApiUrl = () =>
-  ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
-    ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
-    : "https://forge.manus.im/v1/chat/completions";
+const resolveApiConfig = (model?: string) => {
+  const openAiKey =
+    model === "gpt-5-mini"
+      ? ENV.openAiGpt5MiniKey
+      : model === "gpt-5"
+        ? ENV.openAiGpt5Key
+        : model === "gpt-5.5"
+          ? ENV.openAiGpt55Key
+          : "";
 
-const assertApiKey = () => {
-  if (!ENV.forgeApiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
+  if (openAiKey) {
+    return {
+      url: "https://api.openai.com/v1/chat/completions",
+      apiKey: openAiKey,
+      provider: "openai" as const,
+    };
+  }
+
+  return {
+    url: ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
+      ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
+      : "https://forge.manus.im/v1/chat/completions",
+    apiKey: ENV.forgeApiKey,
+    provider: "forge" as const,
+  };
+};
+
+const assertApiKey = (apiKey: string) => {
+  if (!apiKey) {
+    throw new Error("No LLM API key is configured for this model");
   }
 };
 
@@ -316,8 +338,6 @@ const fetchWithBackoff = async (url: string, init: FetchInit): Promise<Response>
 };
 
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
-  assertApiKey();
-
   const {
     messages,
     tools,
@@ -335,6 +355,8 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     maxCompletionTokens,
     max_completion_tokens,
   } = params;
+  const apiConfig = resolveApiConfig(model);
+  assertApiKey(apiConfig.apiKey);
 
   const payload: Record<string, unknown> = {
     messages: messages.map(normalizeMessage),
@@ -367,7 +389,13 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.thinking = thinking;
   }
   if (reasoning) {
-    payload.reasoning = reasoning;
+    if (apiConfig.provider === "openai") {
+      if (typeof reasoning.effort === "string") {
+        payload.reasoning_effort = reasoning.effort;
+      }
+    } else {
+      payload.reasoning = reasoning;
+    }
   }
 
   const normalizedResponseFormat = normalizeResponseFormat({
@@ -381,11 +409,11 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.response_format = normalizedResponseFormat;
   }
 
-  const response = await fetchWithBackoff(resolveApiUrl(), {
+  const response = await fetchWithBackoff(apiConfig.url, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${ENV.forgeApiKey}`,
+      authorization: `Bearer ${apiConfig.apiKey}`,
     },
     body: JSON.stringify(payload),
   });
@@ -411,7 +439,7 @@ export type ModelsResponse = {
 };
 
 export async function listLLMModels(): Promise<ModelsResponse> {
-  assertApiKey();
+  assertApiKey(ENV.forgeApiKey);
 
   const url =
     ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
