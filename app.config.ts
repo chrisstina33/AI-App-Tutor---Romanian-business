@@ -37,25 +37,11 @@ const env = {
   androidPackage: bundleId,
 };
 
-// Expo serializes this browser-safe subset into native and web bundles. The server-only
-// MANUS_API_KEY and MANUS_JWT_SECRET must never enter this object.
+// Only the backend URL is serialized into the app. OAuth details and provider keys stay server-side.
 const publicRuntime = {
-  oauthPortalUrl:
-    process.env.MANUS_OAUTH_PORTAL_URL ??
-    process.env.VITE_OAUTH_PORTAL_URL ??
-    process.env.EXPO_PUBLIC_OAUTH_PORTAL_URL ??
-    "",
-  oauthServerUrl:
-    process.env.MANUS_OAUTH_API_URL ??
-    process.env.OAUTH_SERVER_URL ??
-    process.env.EXPO_PUBLIC_OAUTH_SERVER_URL ??
-    "",
-  appId:
-    process.env.MANUS_PROJECT_ID ??
-    process.env.VITE_APP_ID ??
-    process.env.EXPO_PUBLIC_APP_ID ??
-    "",
-  apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "",
+  apiBaseUrl:
+    process.env.EXPO_PUBLIC_API_BASE_URL ??
+    "https://ai-app-tutor-romanian-business.onrender.com",
 };
 
 const config: ExpoConfig = {

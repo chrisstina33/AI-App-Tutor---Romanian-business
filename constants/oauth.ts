@@ -1,6 +1,7 @@
 import * as Linking from "expo-linking";
 import Constants from "expo-constants";
 import * as ReactNative from "react-native";
+import { DEFAULT_API_BASE_URL } from "@/shared/const";
 
 // Extract scheme from bundle ID (last segment timestamp, prefixed with "manus")
 // e.g., "space.manus.my.app.t20240115103045" -> "manus20240115103045"
@@ -11,20 +12,11 @@ const schemeFromBundleId = `manus${timestamp}`;
 const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, string | undefined>;
 
 const env = {
-  portal: extra.oauthPortalUrl ?? process.env.EXPO_PUBLIC_OAUTH_PORTAL_URL ?? "",
-  server: extra.oauthServerUrl ?? process.env.EXPO_PUBLIC_OAUTH_SERVER_URL ?? "",
-  appId: extra.appId ?? process.env.EXPO_PUBLIC_APP_ID ?? "",
-  ownerId: process.env.EXPO_PUBLIC_OWNER_OPEN_ID ?? "",
-  ownerName: process.env.EXPO_PUBLIC_OWNER_NAME ?? "",
-  apiBaseUrl: extra.apiBaseUrl ?? process.env.EXPO_PUBLIC_API_BASE_URL ?? "",
+  apiBaseUrl:
+    extra.apiBaseUrl ?? process.env.EXPO_PUBLIC_API_BASE_URL ?? DEFAULT_API_BASE_URL,
   deepLinkScheme: schemeFromBundleId,
 };
 
-export const OAUTH_PORTAL_URL = env.portal;
-export const OAUTH_SERVER_URL = env.server;
-export const APP_ID = env.appId;
-export const OWNER_OPEN_ID = env.ownerId;
-export const OWNER_NAME = env.ownerName;
 export const API_BASE_URL = env.apiBaseUrl;
 
 /**
@@ -84,15 +76,31 @@ export const getRedirectUri = () => {
   }
 };
 
-export const getLoginUrl = () => {
-  if (!OAUTH_PORTAL_URL || !APP_ID) {
-    throw new Error("Manus login configuration is unavailable");
+export const getLoginUrl = async () => {
+  const response = await fetch(`${getApiBaseUrl()}/api/oauth/config`);
+  if (!response.ok) {
+    throw new Error(`Serverul OAuth nu este disponibil (HTTP ${response.status}).`);
   }
+
+  const config: unknown = await response.json();
+  if (
+    !config ||
+    typeof config !== "object" ||
+    !("portalUrl" in config) ||
+    typeof config.portalUrl !== "string" ||
+    !("appId" in config) ||
+    typeof config.appId !== "string" ||
+    !config.portalUrl ||
+    !config.appId
+  ) {
+    throw new Error("Serverul Render nu are configurația OAuth completă.");
+  }
+
   const redirectUri = getRedirectUri();
   const state = encodeState(redirectUri);
 
-  const url = new URL(`${OAUTH_PORTAL_URL}/app-auth`);
-  url.searchParams.set("appId", APP_ID);
+  const url = new URL(`${config.portalUrl.replace(/\/+$/, "")}/app-auth`);
+  url.searchParams.set("appId", config.appId);
   url.searchParams.set("redirectUri", redirectUri);
   url.searchParams.set("state", state);
   url.searchParams.set("type", "signIn");
@@ -111,7 +119,7 @@ export const getLoginUrl = () => {
  * @returns Always null, the callback is handled via deep link.
  */
 export async function startOAuthLogin(): Promise<string | null> {
-  const loginUrl = getLoginUrl();
+  const loginUrl = await getLoginUrl();
 
   if (ReactNative.Platform.OS === "web") {
     // On web, just redirect
@@ -123,17 +131,9 @@ export async function startOAuthLogin(): Promise<string | null> {
 
   const supported = await Linking.canOpenURL(loginUrl);
   if (!supported) {
-    console.warn("[OAuth] Cannot open login URL: URL scheme not supported");
-    // 可考虑抛出错误或返回错误状态，让调用方处理
-    return null;
+    throw new Error("Dispozitivul nu poate deschide pagina de autentificare.");
   }
-
-  try {
-    await Linking.openURL(loginUrl);
-  } catch {
-    console.error("[OAuth] Failed to open login URL");
-    // 可考虑抛出错误让调用方处理
-  }
+  await Linking.openURL(loginUrl);
 
   // The OAuth callback will reopen the app via deep link.
   return null;

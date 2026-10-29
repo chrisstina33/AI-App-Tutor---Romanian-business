@@ -483,9 +483,10 @@ export default function ProfileScreen() {
                 onPress={async () => {
                   try {
                     await startOAuthLogin();
-                  } catch {
+                  } catch (error) {
+                    console.error("[OAuth] Sign-in could not be started", error);
                     setAuthNotice(
-                      "Configurația OAuth nu este disponibilă în acest Preview. Poți continua în modul local.",
+                      "Nu s-a putut porni autentificarea prin serverul Render. Verifică dacă serverul și configurația OAuth sunt disponibile.",
                     );
                   }
                 }}

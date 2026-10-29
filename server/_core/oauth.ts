@@ -5,6 +5,7 @@ import {
   getSessionCookieName,
   getSessionCookieOptions,
 } from "./cookies";
+import { ENV } from "./env";
 import { sdk } from "./sdk";
 
 function getQueryParam(req: Request, key: string): string | undefined {
@@ -65,6 +66,38 @@ function buildUserResponse(
 }
 
 export function registerOAuthRoutes(app: Express) {
+  app.get("/api/oauth/config", (_req: Request, res: Response) => {
+    const appId = ENV.appId.trim();
+    const portalUrl = ENV.oAuthPortalUrl.trim();
+    if (!appId || !portalUrl) {
+      console.error("[OAuth] Public login configuration is missing on the backend");
+      res.status(503).json({ error: "OAuth login is not configured on the backend" });
+      return;
+    }
+
+    try {
+      const parsedPortalUrl = new URL(portalUrl);
+      if (
+        (parsedPortalUrl.protocol !== "https:" && parsedPortalUrl.protocol !== "http:") ||
+        parsedPortalUrl.username ||
+        parsedPortalUrl.password ||
+        parsedPortalUrl.search ||
+        parsedPortalUrl.hash
+      ) {
+        throw new Error("Invalid OAuth portal URL");
+      }
+
+      res.setHeader("Cache-Control", "no-store");
+      res.json({
+        appId,
+        portalUrl: parsedPortalUrl.toString().replace(/\/+$/, ""),
+      });
+    } catch (error) {
+      console.error("[OAuth] Public login configuration is invalid", error);
+      res.status(503).json({ error: "OAuth login is not configured on the backend" });
+    }
+  });
+
   app.get("/api/oauth/callback", async (req: Request, res: Response) => {
     const code = getQueryParam(req, "code");
     const state = getQueryParam(req, "state");
