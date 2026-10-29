@@ -1,7 +1,7 @@
 <<<<<<< HEAD
 # Elunariq Learning Assistant
 
-Elunariq is a portrait-first educational app for high-school students who need help understanding homework one step at a time. The managed mobile app uses Expo Router, React Native, TypeScript, NativeWind, tRPC, the starter Manus OAuth flow, AsyncStorage for local preferences/history, and a server-side tutor route that calls the starter LLM helper when a live provider is available.
+Elunariq is a portrait-first educational app for high-school students who need help understanding homework one step at a time. The managed mobile app uses Expo Router, React Native, TypeScript, NativeWind, tRPC, AsyncStorage for local preferences/history, and a server-side tutor route that calls the configured LLM provider when available.
 
 ## Run the managed mobile app
 
@@ -39,9 +39,9 @@ The tutor calls `assistant.chat` through tRPC. If the configured server-side LLM
 
 ## Configuration and limitations
 
-The server-side tutor uses managed runtime credentials through the starter's existing LLM helper. No API key is placed in the client bundle. A project with a configured Manus service runtime can use live responses; otherwise demo mode is the honest fallback. Real PDF/image understanding would require a storage-backed upload plus a supported file/image analysis pipeline. The current upload UI validates the file and exposes its metadata but does not claim content analysis.
+The app calls the Render backend configured by `EXPO_PUBLIC_API_BASE_URL`; AI provider credentials remain server-side on Render and are never placed in the client bundle. Profile preferences and progress are stored only on the current device. Login and account synchronization are not enabled, so the app does not require Manus OAuth or Manus hosting. Real PDF/image understanding would require a storage-backed upload plus a supported file/image analysis pipeline. The current upload UI validates the file and exposes its metadata but does not claim content analysis.
 
-The profile currently stores preferences and learning history on the device. The starter's real Manus OAuth plumbing remains intact, but the profile intentionally tells logged-out users to continue in a connected Preview instead of inventing a local password flow. Voice controls are represented as a permission-aware preference and should be connected to recording/transcription only when the app needs that capability.
+Voice controls are represented as a permission-aware preference and should be connected to recording/transcription only when the app needs that capability.
 
 ## Versiunea română și pedagogia Elunariq
 

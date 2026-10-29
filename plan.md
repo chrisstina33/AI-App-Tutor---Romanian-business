@@ -1,16 +1,16 @@
 # Elunariq Learning Assistant — Implementation Plan
 
 ## Product scope
-Elunariq is a portrait-first learning companion for high-school students. The MVP focuses on four connected flows: a calm dashboard for choosing what to study, a guided AI tutor that emphasizes hints and reasoning, a progress view for lessons and goals, and a profile/settings surface for preferences and theme. Authentication remains the starter's real Manus OAuth flow; the app makes no fake password claims. When the configured server-side LLM is available, tutor requests use it through tRPC. When it is unavailable, the UI switches to a clearly labeled demonstration mode with deterministic, pedagogically framed example responses.
+Elunariq is a portrait-first learning companion for high-school students. The MVP focuses on four connected flows: a calm dashboard for choosing what to study, a guided AI tutor that emphasizes hints and reasoning, a progress view for lessons and goals, and a profile/settings surface for preferences and theme. There is no login; preferences and progress are stored locally on the device. When the configured server-side LLM is available, tutor requests use it through tRPC. When it is unavailable, the UI switches to a clearly labeled demonstration mode with deterministic, pedagogically framed example responses.
 
 ## Implementation approach
 
-- Preserve the fixed Expo Router / React Native / TypeScript / NativeWind starter and its existing OAuth, tRPC, database, and runtime setup.
+- Preserve the fixed Expo Router / React Native / TypeScript / NativeWind starter and its tRPC setup; do not require Manus OAuth or hosting.
 - Build reusable primitives in `components/` for the Elunariq wordmark, cards, icon buttons, progress rings/bars, subject pills, tutor message cards, and bottom tab affordances.
 - Keep app data and copy in small typed modules under `lib/` and `services/` so the screens remain readable and maintainable.
 - Add a server-side tutor procedure that calls the starter's existing server LLM helper without exposing credentials to the native or web bundle. The client service normalizes live responses and falls back to a clearly labeled demo provider on timeout, missing credentials, empty content, or upstream errors.
 - Persist theme, display name, preferred subjects, learning level, explanation style, saved lessons, and completed exercise count with AsyncStorage. The UI labels this data as “Saved on this device” until a server-backed profile table is added.
-- Use the existing Manus OAuth hook for account state and a simple logged-out state that points to the real OAuth action. Do not store passwords or simulate secure email/password auth.
+- Keep account login disabled until a separate authentication provider is selected.
 - Support homework file selection through a platform-safe document/image picker abstraction. Validate PDF/TXT/PNG/JPG and a 10 MB limit, show the selected filename, and explicitly distinguish “ready to send” from “analyzed”. Actual PDF/image analysis remains a documented server/storage follow-up unless a supported public file URL is available.
 - Add accessible empty/loading/error states, keyboard-dismiss-friendly inputs, haptic feedback on primary actions, and compact modal sheets for search, tutor controls, and profile editing.
 
@@ -21,7 +21,7 @@ Elunariq is a portrait-first learning companion for high-school students. The MV
 - `app/(tabs)/index.tsx`: Home/dashboard.
 - `app/(tabs)/tutor.tsx`: guided tutor chat, quick actions, subject/agent controls, and upload affordance.
 - `app/(tabs)/progress.tsx`: learning goal, subject progress, recent lessons, and revision card.
-- `app/(tabs)/profile.tsx`: profile, preferences, storage disclosure, OAuth/logout, and theme switcher.
+- `app/(tabs)/profile.tsx`: profile, preferences, local-storage disclosure, and theme switcher.
 - `components/`: reusable Elunariq UI primitives and tutor/file-upload components.
 - `constants/theme.ts` and `theme.config.ts`: deep navy/violet palette and semantic tokens.
 - `lib/storage.ts`: typed AsyncStorage persistence for app preferences and learning history.

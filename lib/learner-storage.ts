@@ -54,14 +54,6 @@ export async function saveLearnerState(
   }
 }
 
-export function hasLearnerActivity(state: LearnerState): boolean {
-  return (
-    state.questionsAsked > 0 ||
-    state.lessonActivity.length > 0 ||
-    state.savedLessons.length > 0
-  );
-}
-
 function isLearnerState(value: unknown): value is LearnerState {
   if (!value || typeof value !== "object") return false;
   const state = value as Partial<LearnerState>;

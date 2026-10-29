@@ -1,7 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useState } from "react";
 import {
-  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,26 +18,18 @@ import {
   SurfaceCard,
 } from "@/components/bionis-ui";
 import { useColors } from "@/hooks/use-colors";
-import { startOAuthLogin } from "@/constants/oauth";
 import { SUBJECTS } from "@/lib/app-data";
 import { ro } from "@/lib/i18n";
 import type { Preferences } from "@/lib/storage";
 import { useThemeContext } from "@/lib/theme-provider";
-import { useAuth } from "@/hooks/use-auth";
 import { useLearnerData } from "@/lib/learner-context";
 
 export default function ProfileScreen() {
   const colors = useColors();
   const { colorScheme, setColorScheme } = useThemeContext();
-  const { user, loading: authLoading, logout } = useAuth({ autoFetch: true });
-  const {
-    state: learnerState,
-    syncStatus,
-    updatePreferences: saveLearnerPreferences,
-  } = useLearnerData();
+  const { state: learnerState, updatePreferences: saveLearnerPreferences } = useLearnerData();
   const preferences = learnerState.preferences;
   const [saved, setSaved] = useState(false);
-  const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [voice, setVoice] = useState(false);
   const [role, setRole] = useState<"Elev" | "Părinte">("Elev");
   const [avatarNotice, setAvatarNotice] = useState(false);
@@ -88,10 +79,10 @@ export default function ProfileScreen() {
               {preferences.displayName || "Elev"}
             </Text>
             <Text style={[styles.profileMeta, { color: colors.muted }]}>
-              {user?.email ?? "Profil local de învățare"}
+              Profil local de învățare
             </Text>
-            <Badge tone={user ? colors.success : colors.warning}>
-              {user ? "Sincronizat cu Manus" : ro.savedOnDevice}
+            <Badge tone={colors.warning}>
+              {ro.savedOnDevice}
             </Badge>
           </View>
         </SurfaceCard>
@@ -440,74 +431,16 @@ export default function ProfileScreen() {
             </View>
           ) : null}
         </SurfaceCard>
-        <SectionHeading title="Cont" />
+        <SectionHeading title="Datele tale" />
         <SurfaceCard style={styles.accountCard}>
-          {authLoading ? (
-            <ActivityIndicator color={colors.primary} />
-          ) : user ? (
-            <>
-              <Text style={[styles.accountTitle, { color: colors.foreground }]}>
-                Cont conectat
-              </Text>
-              <Text style={[styles.accountBody, { color: colors.muted }]}>
-                {user.email ?? "Identitatea ta este conectată."}
-              </Text>
-              <Text style={[styles.accountBody, { color: colors.muted }]}>
-                {syncStatus === "synced"
-                  ? "Progres sincronizat cu contul."
-                  : syncStatus === "syncing"
-                    ? "Se sincronizează progresul și lecțiile…"
-                    : "Progres salvat pe acest dispozitiv; sincronizarea contului nu este disponibilă acum."}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => logout()}
-                style={[styles.logoutButton, { borderColor: colors.border }]}
-              >
-                <Text style={[styles.logoutText, { color: colors.error }]}>
-                  Deconectează-te
-                </Text>
-              </Pressable>
-            </>
-          ) : (
-            <>
-              <Text style={[styles.accountTitle, { color: colors.foreground }]}>
-                Creează-ți contul Elunariq
-              </Text>
-              <Text style={[styles.accountBody, { color: colors.muted }]}>
-                Creează un cont sau conectează-te în siguranță. Lecțiile și
-                progresul se vor lega de cont după autentificare.
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                onPress={async () => {
-                  try {
-                    await startOAuthLogin();
-                  } catch (error) {
-                    console.error("[OAuth] Sign-in could not be started", error);
-                    setAuthNotice(
-                      "Nu s-a putut porni autentificarea prin serverul Render. Verifică dacă serverul și configurația OAuth sunt disponibile.",
-                    );
-                  }
-                }}
-                style={[
-                  styles.oauthButton,
-                  { backgroundColor: colors.primary },
-                ]}
-              >
-                <Text style={styles.oauthText}>Creează cont / Conectare</Text>
-                <MaterialIcons name="arrow-forward" size={16} color="#FFFFFF" />
-              </Pressable>
-            </>
-          )}
+          <Text style={[styles.accountTitle, { color: colors.foreground }]}>
+            Fără cont, pentru moment
+          </Text>
+          <Text style={[styles.accountBody, { color: colors.muted }]}>
+            Preferințele și progresul tău se salvează doar pe acest dispozitiv.
+            Nu se sincronizează între dispozitive.
+          </Text>
         </SurfaceCard>
-        {authNotice ? (
-          <View style={styles.authNotice}>
-            <Text style={[styles.noticeText, { color: colors.muted }]}>
-              {authNotice}
-            </Text>
-          </View>
-        ) : null}
         {saved ? (
           <View style={styles.savedToast}>
             <MaterialIcons
@@ -673,27 +606,6 @@ const styles = StyleSheet.create({
   accountCard: { gap: 8 },
   accountTitle: { fontSize: 15, fontWeight: "800" },
   accountBody: { fontSize: 12, lineHeight: 18 },
-  logoutButton: {
-    alignSelf: "flex-start",
-    borderWidth: 1,
-    borderRadius: 11,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-    marginTop: 7,
-  },
-  logoutText: { fontSize: 12, fontWeight: "800" },
-  oauthButton: {
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    borderRadius: 12,
-    paddingHorizontal: 13,
-    paddingVertical: 10,
-    marginTop: 7,
-  },
-  oauthText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
-  authNotice: { marginTop: 11 },
   savedToast: {
     flexDirection: "row",
     alignItems: "center",

@@ -1,14 +1,8 @@
 /**
- * Custom environment loader that prioritizes system environment variables
- * over .env file values. This ensures that Manus platform-injected variables
- * are not overridden by placeholder values in .env
+ * Custom environment loader that prioritizes system environment variables over .env values.
  */
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const envPath = path.resolve(process.cwd(), ".env");
 
@@ -31,17 +25,4 @@ if (fs.existsSync(envPath)) {
       }
     }
   });
-}
-
-// Map platform variables to Expo public variables. Canonical MANUS_* names win;
-// legacy aliases remain as fallbacks for older published environments.
-const mappings = [
-  ["OWNER_OPEN_ID", "EXPO_PUBLIC_OWNER_OPEN_ID"],
-  ["OWNER_NAME", "EXPO_PUBLIC_OWNER_NAME"],
-];
-
-for (const [systemVar, expoVar] of mappings) {
-  if (process.env[systemVar] && !process.env[expoVar]) {
-    process.env[expoVar] = process.env[systemVar];
-  }
 }

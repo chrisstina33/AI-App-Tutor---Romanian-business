@@ -34,10 +34,10 @@
 
 ## 5. Add profile, auth state, persistence, and preferences
 
-- [ ] Preserve the starter's real Manus OAuth flow and logged-out/loading/error states; do not store passwords in local storage or simulate secure authentication.
+- [x] Keep login disabled; the app does not depend on Manus hosting or OAuth.
 - [ ] Let students view/edit display name, choose preferred subjects, select learning level, choose explanation style, review saved lessons, track completed exercises, view learning progress, and configure basic app preferences.
 - [ ] Persist preferences and learning history using available device storage, with a clear “Saved on this device” disclosure.
-- [ ] Add light/dark/system theme controls and logout behavior when an authenticated user exists.
+- [ ] Add light/dark/system theme controls.
 - [ ] Add optional voice controls only with permission-aware native/browser fallback messaging.
 
 ## 6. Verify and document the delivered MVP

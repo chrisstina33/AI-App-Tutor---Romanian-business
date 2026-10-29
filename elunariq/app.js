@@ -11,7 +11,7 @@ const demoResponses = {
   practice: "Încearcă exercițiul \\(2x+5=17\\). Nu căuta rezultatul complet. Ce ai elimina mai întâi și de ce?",
   default: "Am înțeles. Înainte să continui, spune-mi ce date sunt cunoscute și ce trebuie aflat. Care este primul lucru pe care îl observi?",
 };
-const state = { subject: "Toate", query: "", progress: 0, authMode: "signin" };
+const state = { subject: "Toate", query: "", progress: 0 };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const escapeHtml = (value) => String(value).replace(/[&<>\"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[char]));
@@ -38,21 +38,16 @@ function replyFor(text) { const normalized = text.toLocaleLowerCase("ro"); if (n
 function revealReply(node, text) { const target = node.querySelector("p"); if (reduceMotion) { target.textContent = text; return; } const words = text.split(" "); let index = 0; const timer = window.setInterval(() => { target.textContent += `${index ? " " : ""}${words[index]}`; index += 1; if (index >= words.length) window.clearInterval(timer); }, 34); }
 function submitTutor(text) { const value = text.trim(); if (!value) return; addMessage("user", value); $("#chat-input").value = ""; const pending = addMessage("assistant", "Scriu următorul pas…"); pending.classList.add("pending"); window.setTimeout(() => { pending.classList.remove("pending"); revealReply(pending, replyFor(value)); }, reduceMotion ? 0 : 520); }
 function toggleTheme() { document.body.classList.toggle("light"); const icon = $("[data-action=theme] i"); if (icon) icon.setAttribute("data-lucide", document.body.classList.contains("light") ? "moon" : "sun"); refreshIcons(); saveState(); showToast(document.body.classList.contains("light") ? "Tema luminoasă este activă." : "Tema întunecată este activă."); }
-function openAuth(mode = "signin") { state.authMode = mode; $("#auth").hidden = false; $("#auth-title").textContent = mode === "signup" ? "Creează contul Elunariq." : "Intră în Elunariq."; $("#auth-submit").textContent = mode === "signup" ? "Creează contul" : "Intră în cont"; $("#auth-note").textContent = "Demo local: nu trimitem parola nicăieri."; $("#auth").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" }); }
 function startTest() { $("#test-feedback").textContent = ""; $("#test-dialog").showModal(); refreshIcons(); }
 function bind() {
   $("[data-action=theme]").addEventListener("click", toggleTheme);
   $$('[data-action="focus-tutor"]').forEach((button) => button.addEventListener("click", () => $("#tutor").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" })));
-  $$('[data-action="open-auth"]').forEach((button) => button.addEventListener("click", () => openAuth(button.dataset.authMode)));
-  $("[data-action=close-auth]").addEventListener("click", () => { $("#auth").hidden = true; });
-  $("[data-action=toggle-auth]").addEventListener("click", () => openAuth(state.authMode === "signin" ? "signup" : "signin"));
   $("[data-action=start-test]").addEventListener("click", startTest);
   $("[data-action=close-test]").addEventListener("click", () => $("#test-dialog").close());
   $$("[data-test-answer]").forEach((button) => button.addEventListener("click", () => { const correct = button.dataset.testAnswer === "right"; $("#test-feedback").textContent = correct ? "Corect. Ai ales operația care păstrează egalitatea." : "Nu încă. Gândește-te la operația inversă și încearcă din nou."; if (correct) { state.progress = Math.min(100, Math.max(10, state.progress + 10)); renderProgress(); saveState(); } }));
   $("#search-input").addEventListener("input", (event) => { state.query = event.target.value; renderSubjects(); });
   $("#chat-form").addEventListener("submit", (event) => { event.preventDefault(); submitTutor($("#chat-input").value); });
   $$("[data-prompt]").forEach((button) => button.addEventListener("click", () => submitTutor(button.dataset.prompt)));
-  $("#auth-form").addEventListener("submit", (event) => { event.preventDefault(); $("#auth-note").textContent = state.authMode === "signup" ? "Cont demo creat. Datele rămân doar în această sesiune." : "Ai intrat în contul demo local."; showToast("Acțiune demo finalizată."); });
   $("#contact-form").addEventListener("submit", (event) => { event.preventDefault(); event.target.reset(); showToast("Mesajul demo a fost pregătit."); });
   if (!reduceMotion) $$(".glass-panel").forEach((panel) => panel.addEventListener("pointermove", (event) => { const rect = panel.getBoundingClientRect(); const x = (event.clientX - rect.left) / rect.width - .5; const y = (event.clientY - rect.top) / rect.height - .5; panel.style.transform = `perspective(900px) rotateX(${(-y * 4).toFixed(2)}deg) rotateY(${(x * 4).toFixed(2)}deg)`; }));
   if (!reduceMotion) $$(".glass-panel").forEach((panel) => panel.addEventListener("pointerleave", () => { panel.style.transform = ""; }));
