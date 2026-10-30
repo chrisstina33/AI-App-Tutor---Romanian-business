@@ -1,7 +1,7 @@
 export type TutorMode = "guided" | "hint" | "concept" | "example" | "check" | "practice" | "summary" | "direct";
-export type TutorMessage = { id: string; role: "user" | "assistant"; text: string; mode?: TutorMode; createdAt: number; provider?: "live" | "demo"; model?: string };
+export type TutorMessage = { id: string; role: "user" | "assistant"; text: string; mode?: TutorMode; createdAt: number; provider?: "live"; model?: string };
 export type TutorInput = { question: string; subject: string; mode: TutorMode; history: Array<Pick<TutorMessage, "role" | "text">> };
-export type TutorReply = { text: string; provider: "live" | "demo"; notice?: string; model?: string };
+export type TutorReply = { text: string; provider: "live"; model?: string };
 
 export const TUTOR_MODES: Array<{ id: TutorMode; label: string; icon: string; tone: string }> = [
   { id: "hint", label: "Dă-mi un indiciu", icon: "lightbulb", tone: "#8A72FF" },
@@ -17,15 +17,6 @@ export const GUIDED_SYSTEM_PROMPT = `Ești Elunariq, un ghid de învățare în 
 export function buildTutorPrompt(input: TutorInput): string {
   const modeLabel = input.mode === "direct" ? "răspuns complet cerut explicit" : `${input.mode}, un singur pas și o întrebare`;
   return `${GUIDED_SYSTEM_PROMPT}\n\nMateria: ${input.subject}\nMod: ${modeLabel}\nÎntrebarea elevului: ${input.question}`;
-}
-
-export async function getDemoReply(): Promise<TutorReply> {
-  await new Promise((resolve) => setTimeout(resolve, 700));
-  return {
-    text: "Nu am putut obține un răspuns de la serviciul AI. Verifică dacă serviciul Render este activ și dacă cheile API sunt configurate.",
-    provider: "demo",
-    notice: "AI indisponibil · acesta nu este un răspuns generat de model.",
-  };
 }
 
 export function createMessageId(prefix: string): string { return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`; }

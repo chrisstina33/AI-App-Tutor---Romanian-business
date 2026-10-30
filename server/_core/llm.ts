@@ -214,49 +214,19 @@ const resolveApiConfig = (model?: string) => {
         ? { apiKey: ENV.openRouterGpt5Key || ENV.openRouterApiKey, model: ENV.openRouterGpt5Model }
         : model === "gpt-5.5"
           ? { apiKey: ENV.openRouterGpt55Key || ENV.openRouterApiKey, model: ENV.openRouterGpt55Model }
-          : undefined;
+          : { apiKey: ENV.openRouterApiKey, model };
 
-  if (openRouterConfig?.apiKey) {
-    return {
-      url: "https://openrouter.ai/api/v1/chat/completions",
-      apiKey: openRouterConfig.apiKey,
-      provider: "openrouter" as const,
-      requestModel: openRouterConfig.model,
-    };
+  if (!openRouterConfig.apiKey) {
+    throw new Error(
+      "OpenRouter API key is missing. Configure OPENROUTER_API_KEY on the server.",
+    );
   }
-
-  const openAiKey =
-    model === "gpt-5-mini"
-      ? ENV.openAiGpt5MiniKey
-      : model === "gpt-5"
-        ? ENV.openAiGpt5Key
-        : model === "gpt-5.5"
-          ? ENV.openAiGpt55Key
-          : "";
-
-  if (openAiKey) {
-    return {
-      url: "https://api.openai.com/v1/chat/completions",
-      apiKey: openAiKey,
-      provider: "openai" as const,
-      requestModel: model,
-    };
-  }
-
   return {
-    url: ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
-      ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
-      : "https://forge.manus.im/v1/chat/completions",
-    apiKey: ENV.forgeApiKey,
-    provider: "forge" as const,
-    requestModel: model,
+    url: "https://openrouter.ai/api/v1/chat/completions",
+    apiKey: openRouterConfig.apiKey,
+    provider: "openrouter" as const,
+    requestModel: openRouterConfig.model,
   };
-};
-
-const assertApiKey = (apiKey: string) => {
-  if (!apiKey) {
-    throw new Error("No LLM API key is configured for this model");
-  }
 };
 
 const normalizeResponseFormat = ({
@@ -376,13 +346,6 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     max_completion_tokens,
   } = params;
   const apiConfig = resolveApiConfig(model);
-  if (!apiConfig.apiKey) {
-    console.error("[LLM] Missing API key for model", {
-      model: model ?? "default",
-      provider: apiConfig.provider,
-    });
-  }
-  assertApiKey(apiConfig.apiKey);
 
   const payload: Record<string, unknown> = {
     messages: messages.map(normalizeMessage),
@@ -415,12 +378,8 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.thinking = thinking;
   }
   if (reasoning) {
-    if (apiConfig.provider !== "forge") {
-      if (typeof reasoning.effort === "string") {
-        payload.reasoning_effort = reasoning.effort;
-      }
-    } else {
-      payload.reasoning = reasoning;
+    if (typeof reasoning.effort === "string") {
+      payload.reasoning_effort = reasoning.effort;
     }
   }
 

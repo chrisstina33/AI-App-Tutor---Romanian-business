@@ -38,7 +38,6 @@ import {
 } from "@/lib/storage";
 import {
   createMessageId,
-  getDemoReply,
   revealSlowly,
   TUTOR_MODES,
   type TutorMessage,
@@ -90,9 +89,8 @@ export default function TutorScreen() {
   async function addReply(
     reply: {
       text: string;
-      provider: "live" | "demo";
+      provider: "live";
       model?: string;
-      notice?: string;
     },
     requestedMode: TutorMode,
   ) {
@@ -107,12 +105,7 @@ export default function TutorScreen() {
       createdAt: currentTimestamp(),
     };
     setMessages((current) => [...current, next]);
-    setNotice(
-      reply.notice ??
-        (reply.provider === "live"
-          ? `${ro.liveTutor} · răspunsul este afișat treptat.`
-          : ro.demoMode),
-    );
+    setNotice(`${ro.liveTutor} · răspunsul este afișat treptat.`);
     await revealSlowly(reply.text, (partial) =>
       setMessages((current) =>
         current.map((message) =>
@@ -143,9 +136,12 @@ export default function TutorScreen() {
         messages: history.slice(-12),
       });
       await addReply(live, requestedMode);
-    } catch {
-      const demo = await getDemoReply();
-      await addReply(demo, requestedMode);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Eroare necunoscută";
+      console.error("[Tutor] AI request failed", detail);
+      setNotice(
+        `Eroare la conectarea cu AI-ul: ${detail}. Verifică OPENROUTER_API_KEY, CORS_ALLOWED_ORIGINS și EXPO_PUBLIC_API_BASE_URL în Render.`,
+      );
     } finally {
       setPending(false);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);

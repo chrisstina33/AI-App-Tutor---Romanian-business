@@ -19,7 +19,6 @@ export const ro = {
   demoData: "Unele informații sunt demonstrative până când salvezi propriile lecții.",
   savedOnDevice: "Salvat pe acest dispozitiv",
   liveTutor: "Ghid live",
-  demoMode: "Mod demonstrativ",
   directAnswer: "Răspuns complet",
   guidedMode: "Mod ghidat",
   askQuestion: "Scrie problema sau următorul pas…",

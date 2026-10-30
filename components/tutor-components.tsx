@@ -55,11 +55,6 @@ export function TutorMessageCard({ message }: { message: TutorMessage }) {
           >
             {assistant ? "Elunariq" : "Tu"}
           </Text>
-          {assistant && message.provider === "demo" ? (
-            <Text style={[styles.demoLabel, { color: colors.warning }]}>
-              DEMO
-            </Text>
-          ) : null}
         </View>
         {message.text.split("\n").map((line, index) => {
           const heading = line.startsWith("#");
@@ -211,7 +206,6 @@ const styles = StyleSheet.create({
   },
   messageMeta: { flexDirection: "row", alignItems: "center", gap: 8 },
   messageAuthor: { fontSize: 12, fontWeight: "800" },
-  demoLabel: { fontSize: 9, fontWeight: "900", letterSpacing: 1 },
   messageText: { fontSize: 14, lineHeight: 21 },
   messageHeading: { fontWeight: "800", marginTop: 2 },
   messageBullet: { paddingLeft: 4 },

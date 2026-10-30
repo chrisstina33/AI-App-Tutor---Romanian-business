@@ -36,6 +36,6 @@ async function startServer() {
   });
 }
 
-startServer().catch(() => {
-  console.error("[api] server failed to start");
+startServer().catch((error) => {
+  console.error("[api] server failed to start", error);
 });

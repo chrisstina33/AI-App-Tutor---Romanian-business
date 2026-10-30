@@ -19,6 +19,30 @@ function configuredOrigin(name: "EXPO_PACKAGER_PROXY_URL" | "EXPO_WEB_PREVIEW_UR
   }
 }
 
+function configuredCorsOrigins(): Set<string> {
+  const configured = process.env.CORS_ALLOWED_ORIGINS;
+  if (!configured?.trim()) return new Set();
+
+  return new Set(
+    configured.split(",").map((value) => {
+      const origin = value.trim();
+      let url: URL;
+      try {
+        url = new URL(origin);
+      } catch {
+        throw new Error(`Invalid origin in CORS_ALLOWED_ORIGINS: ${origin}`);
+      }
+      if (
+        (url.protocol !== "https:" && url.protocol !== "http:") ||
+        url.origin !== origin
+      ) {
+        throw new Error(`Invalid origin in CORS_ALLOWED_ORIGINS: ${origin}`);
+      }
+      return origin;
+    }),
+  );
+}
+
 function pairedPreviewOrigin(packagerOrigin: string): string | null {
   const url = new URL(packagerOrigin);
   const previewHostname = url.hostname.replace(/^8081-/, "8328-");
@@ -28,7 +52,7 @@ function pairedPreviewOrigin(packagerOrigin: string): string | null {
 }
 
 export function trustedExpoWebOrigins(): Set<string> {
-  const origins = new Set<string>();
+  const origins = configuredCorsOrigins();
   const packager = configuredOrigin("EXPO_PACKAGER_PROXY_URL");
   const preview = configuredOrigin("EXPO_WEB_PREVIEW_URL");
   // Loopback origins are request-local below. Never put one in this process-wide set: the

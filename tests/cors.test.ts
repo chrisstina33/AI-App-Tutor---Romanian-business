@@ -14,6 +14,7 @@ beforeEach(() => {
   // a platform URL cannot leak into a case that intentionally exercises only loopback data.
   vi.stubEnv("EXPO_PACKAGER_PROXY_URL", "");
   vi.stubEnv("EXPO_WEB_PREVIEW_URL", "");
+  vi.stubEnv("CORS_ALLOWED_ORIGINS", "");
 });
 
 afterEach(async () => {
@@ -63,6 +64,39 @@ describe("Mobile API origin isolation", () => {
       "https://8081-sandbox.region.preview.example.test",
       "https://8328-sandbox.region.preview.example.test",
     ]);
+  });
+
+  it("allows an explicitly configured deployed frontend origin", async () => {
+    vi.stubEnv("CORS_ALLOWED_ORIGINS", "https://elunariq.example");
+    const base = await testServer(true, trustedExpoWebOrigins());
+    const response = await fetch(`${base}/read`, {
+      headers: { Origin: "https://elunariq.example" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "https://elunariq.example",
+    );
+
+    const preflight = await fetch(`${base}/write`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://elunariq.example",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type",
+      },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-origin")).toBe(
+      "https://elunariq.example",
+    );
+  });
+
+  it("rejects malformed configured frontend origins", () => {
+    vi.stubEnv("CORS_ALLOWED_ORIGINS", "https://elunariq.example/");
+    expect(() => trustedExpoWebOrigins()).toThrow(
+      "Invalid origin in CORS_ALLOWED_ORIGINS",
+    );
   });
 
   it.each(["GET", "POST", "OPTIONS"])(
