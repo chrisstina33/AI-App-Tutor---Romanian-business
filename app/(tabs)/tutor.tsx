@@ -43,6 +43,7 @@ import {
   type TutorMessage,
   type TutorMode,
 } from "@/services/ai-service";
+import { getApiBaseUrl } from "@/constants/api";
 import { trpc } from "@/lib/trpc";
 
 const INITIAL_MESSAGE: TutorMessage = {
@@ -139,8 +140,12 @@ export default function TutorScreen() {
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Eroare necunoscută";
       console.error("[Tutor] AI request failed", detail);
+      const networkFailure =
+        /fetch|network|timeout|failed to connect/i.test(detail);
       setNotice(
-        `Eroare la conectarea cu AI-ul: ${detail}. Verifică OPENROUTER_API_KEY, CORS_ALLOWED_ORIGINS și EXPO_PUBLIC_API_BASE_URL în Render.`,
+        networkFailure
+          ? `Nu mă pot conecta la serverul AI (${getApiBaseUrl()}). Verifică internetul și dacă serviciul Render este pornit, apoi încearcă din nou.`
+          : `Serverul AI a răspuns cu o eroare: ${detail}. Verifică cheia și modelele OpenRouter configurate în Render.`,
       );
     } finally {
       setPending(false);

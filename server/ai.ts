@@ -29,8 +29,8 @@ export const assistantRouter = router({
       model: selected.model,
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: `Materia: ${input.subject}\nMod: ${input.mode}\nÎntrebarea elevului: ${input.question}` },
         ...history,
+        { role: "user", content: `Materia: ${input.subject}\nMod: ${input.mode}\nÎntrebarea elevului: ${input.question}` },
       ],
       maxCompletionTokens: selected.tier === "premium" ? 1400 : selected.tier === "extended" ? 1000 : 700,
       reasoning: selected.tier === "routine" ? { effort: "minimal" } : { effort: selected.tier === "premium" ? "high" : "medium" },
