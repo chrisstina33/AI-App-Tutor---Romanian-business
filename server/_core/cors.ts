@@ -116,10 +116,13 @@ export function createCorsMiddleware(
       return;
     }
     const loopbackOrigin = originHasLoopbackHostname(origin);
+    const explicitlyConfiguredLoopbackOrigin =
+      loopbackOrigin && configuredCorsOrigins().has(origin);
     const allowedLocalOrigin =
       localApiRequest(req.hostname) && configuredLocalExpoWebOrigins().has(origin);
     const allowedConfiguredOrigin =
-      !loopbackOrigin && allowedOrigins.has(origin);
+      allowedOrigins.has(origin) &&
+      (!loopbackOrigin || explicitlyConfiguredLoopbackOrigin);
     if (!allowedConfiguredOrigin && !allowedLocalOrigin) {
       res.status(403).json({ error: "origin_not_allowed" });
       return;

@@ -92,6 +92,19 @@ describe("Mobile API origin isolation", () => {
     );
   });
 
+  it("allows localhost against a remote API only when explicitly configured", async () => {
+    vi.stubEnv("CORS_ALLOWED_ORIGINS", "http://localhost:8081");
+    const base = await testServer(false, trustedExpoWebOrigins());
+    const response = await fetch(`${base}/read`, {
+      headers: { Origin: "http://localhost:8081" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "http://localhost:8081",
+    );
+  });
+
   it("rejects malformed configured frontend origins", () => {
     vi.stubEnv("CORS_ALLOWED_ORIGINS", "https://elunariq.example/");
     expect(() => trustedExpoWebOrigins()).toThrow(
