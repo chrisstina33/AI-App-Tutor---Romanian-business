@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 # Elunariq Learning Assistant
 
 Elunariq is a portrait-first educational app for high-school students who need help understanding homework one step at a time. The managed mobile app uses Expo Router, React Native, TypeScript, NativeWind, tRPC, AsyncStorage for local preferences/history, and a server-side tutor route that calls the configured LLM provider when available.
