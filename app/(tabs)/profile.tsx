@@ -21,19 +21,60 @@ import { useColors } from "@/hooks/use-colors";
 import { SUBJECTS } from "@/lib/app-data";
 import { ro } from "@/lib/i18n";
 import type { Preferences } from "@/lib/storage";
-import { useThemeContext } from "@/lib/theme-provider";
+import { ACCENT_COLORS, useThemeContext } from "@/lib/theme-provider";
 import { useLearnerData } from "@/lib/learner-context";
+import { useAuth } from "@/lib/auth-context";
+import { trpc } from "@/lib/trpc";
 
 export default function ProfileScreen() {
   const colors = useColors();
-  const { colorScheme, setColorScheme } = useThemeContext();
+  const { colorScheme, setColorScheme, accent, setAccent } = useThemeContext();
   const { state: learnerState, updatePreferences: saveLearnerPreferences } = useLearnerData();
+  const { user, beginSession, endSession } = useAuth();
   const preferences = learnerState.preferences;
   const [saved, setSaved] = useState(false);
   const [voice, setVoice] = useState(false);
-  const [role, setRole] = useState<"Elev" | "Părinte">("Elev");
+  const [accountType, setAccountType] = useState<"student" | "parent">("student");
+  const [authMode, setAuthMode] = useState<"signup" | "signin">("signup");
+  const [accountName, setAccountName] = useState("");
+  const [accountEmail, setAccountEmail] = useState("");
+  const [accountPassword, setAccountPassword] = useState("");
+  const [parentCode, setParentCode] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
+  const [accountNotice, setAccountNotice] = useState("");
   const [avatarNotice, setAvatarNotice] = useState(false);
   const [premiumDetails, setPremiumDetails] = useState(false);
+  const signUpMutation = trpc.auth.signUp.useMutation();
+  const signInMutation = trpc.auth.signIn.useMutation();
+  const signOutMutation = trpc.auth.signOut.useMutation();
+  const inviteMutation = trpc.auth.createParentInvite.useMutation();
+  const linkMutation = trpc.auth.linkStudent.useMutation();
+  const parentOverview = trpc.auth.parentOverview.useQuery(undefined, { enabled: user?.accountType === "parent", retry: false, refetchInterval: 30_000 });
+  async function submitAccount() {
+    setAccountNotice("");
+    try {
+      const response = authMode === "signup"
+        ? await signUpMutation.mutateAsync({ name: accountName || preferences.displayName, email: accountEmail, password: accountPassword, accountType })
+        : await signInMutation.mutateAsync({ email: accountEmail, password: accountPassword });
+      await beginSession(response.session.token, response.user);
+      if (response.user.accountType === "student" && authMode === "signup") updatePreferences({ displayName: response.user.name });
+      setAccountNotice("Contul este activ. Progresul elevului se sincronizează cu serverul.");
+      setAccountPassword("");
+    } catch (error) { setAccountNotice(error instanceof Error ? error.message : "Autentificarea nu a reușit."); }
+  }
+  async function createInvite() {
+    try { const result = await inviteMutation.mutateAsync(); setParentCode(result.code); setAccountNotice("Cod valabil 30 de minute. Trimite-l părintelui pentru asociere."); }
+    catch (error) { setAccountNotice(error instanceof Error ? error.message : "Codul nu a putut fi creat."); }
+  }
+  async function connectStudent() {
+    try { await linkMutation.mutateAsync({ code: inviteCode }); setInviteCode(""); await parentOverview.refetch(); setAccountNotice("Contul elevului a fost asociat."); }
+    catch (error) { setAccountNotice(error instanceof Error ? error.message : "Asocierea nu a reușit."); }
+  }
+  async function signOut() {
+    try { await signOutMutation.mutateAsync(); } catch { /* Expired sessions can still be cleared locally. */ }
+    await endSession();
+    setAccountNotice("Ai ieșit din cont.");
+  }
   function updatePreferences(patch: Partial<Preferences>) {
     saveLearnerPreferences(patch);
     setSaved(true);
@@ -79,11 +120,9 @@ export default function ProfileScreen() {
               {preferences.displayName || "Elev"}
             </Text>
             <Text style={[styles.profileMeta, { color: colors.muted }]}>
-              Profil local de învățare
+              {user ? (user.accountType === "student" ? "Profil sincronizat pentru elev" : "Cont de părinte conectat") : "Profil local de învățare"}
             </Text>
-            <Badge tone={colors.warning}>
-              {ro.savedOnDevice}
-            </Badge>
+            <Badge tone={user ? colors.success : colors.warning}>{user ? "Cont conectat" : ro.savedOnDevice}</Badge>
           </View>
         </SurfaceCard>
         {avatarNotice ? (
@@ -99,53 +138,8 @@ export default function ProfileScreen() {
             </Pressable>
           </SurfaceCard>
         ) : null}
-        <SectionHeading title="Tipul de spațiu" />
+        <SectionHeading title={user ? "Cont conectat" : "Profil de învățare"} />
         <SurfaceCard style={styles.formCard}>
-          <View style={styles.optionWrap}>
-            <Pressable
-              onPress={() => setRole("Elev")}
-              style={[
-                styles.option,
-                {
-                  backgroundColor:
-                    role === "Elev" ? `${colors.primary}16` : colors.background,
-                  borderColor: role === "Elev" ? colors.primary : colors.border,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.optionText,
-                  { color: role === "Elev" ? colors.primary : colors.muted },
-                ]}
-              >
-                Elev
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setRole("Părinte")}
-              style={[
-                styles.option,
-                {
-                  backgroundColor:
-                    role === "Părinte"
-                      ? `${colors.primary}16`
-                      : colors.background,
-                  borderColor:
-                    role === "Părinte" ? colors.primary : colors.border,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.optionText,
-                  { color: role === "Părinte" ? colors.primary : colors.muted },
-                ]}
-              >
-                Părinte
-              </Text>
-            </Pressable>
-          </View>
           <Text style={[styles.fieldLabel, { color: colors.muted }]}>
             NUME AFIȘAT
           </Text>
@@ -324,6 +318,12 @@ export default function ProfileScreen() {
               thumbColor="#FFFFFF"
             />
           </SettingRow>
+          <View>
+            <Text style={[styles.settingTitle, { color: colors.foreground, marginBottom: 10 }]}>Culoare de accent</Text>
+            <View style={styles.optionWrap}>
+              {([{ id: "violet", label: "Violet" }, { id: "teal", label: "Verde petrol" }, { id: "coral", label: "Teracotă" }] as const).map((item) => <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={`Alege accent ${item.label}`} accessibilityState={{ selected: accent === item.id }} onPress={() => setAccent(item.id)} style={[styles.accentOption, { borderColor: accent === item.id ? ACCENT_COLORS[item.id] : colors.border }]}><View style={[styles.accentDot, { backgroundColor: ACCENT_COLORS[item.id] }]} /><Text style={[styles.optionText, { color: colors.foreground }]}>{item.label}</Text></Pressable>)}
+            </View>
+          </View>
           <SettingRow
             icon="record-voice-over"
             title="Comenzi vocale"
@@ -351,8 +351,7 @@ export default function ProfileScreen() {
               color={colors.warning}
             />
             <Text style={[styles.storageText, { color: colors.muted }]}>
-              Preferințele și progresul local sunt salvate pe acest dispozitiv.
-              Nu stocăm parole în aplicație.
+              {user ? "Progresul elevului este sincronizat cu serverul, iar copia locală rămâne disponibilă pe dispozitiv." : "Preferințele și progresul sunt salvate pe acest dispozitiv până când conectezi un cont."}
             </Text>
           </View>
         </SurfaceCard>
@@ -433,13 +432,39 @@ export default function ProfileScreen() {
         </SurfaceCard>
         <SectionHeading title="Datele tale" />
         <SurfaceCard style={styles.accountCard}>
-          <Text style={[styles.accountTitle, { color: colors.foreground }]}>
-            Fără cont, pentru moment
-          </Text>
-          <Text style={[styles.accountBody, { color: colors.muted }]}>
-            Preferințele și progresul tău se salvează doar pe acest dispozitiv.
-            Nu se sincronizează între dispozitive.
-          </Text>
+          {user ? <>
+            <Text style={[styles.accountTitle, { color: colors.foreground }]}>{user.accountType === "student" ? "Cont de elev" : "Cont de părinte"}</Text>
+            <Text style={[styles.accountBody, { color: colors.muted }]}>{user.name} · {user.email}</Text>
+            {user.accountType === "student" ? <>
+              <Text style={[styles.accountBody, { color: colors.muted, marginTop: 8 }]}>Generează un cod temporar și oferă-l părintelui pentru a-i permite să vadă lecțiile și întrebările tale.</Text>
+              <Pressable onPress={createInvite} style={[styles.premiumAction, { borderColor: colors.border, marginTop: 12 }]}><Text style={[styles.premiumActionText, { color: colors.primary }]}>Creează cod pentru părinte</Text></Pressable>
+              {parentCode ? <Text selectable style={[styles.accountTitle, { color: colors.primary, marginTop: 10, letterSpacing: 2 }]}>{parentCode}</Text> : null}
+            </> : <>
+              <TextInput value={inviteCode} onChangeText={setInviteCode} placeholder="Cod primit de la elev" placeholderTextColor={colors.muted} autoCapitalize="characters" style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border, marginTop: 12 }]} />
+              <Pressable onPress={connectStudent} style={[styles.premiumAction, { borderColor: colors.border, marginTop: 8 }]}><Text style={[styles.premiumActionText, { color: colors.primary }]}>Asociază elevul</Text></Pressable>
+              {(parentOverview.data ?? []).map((student) => <View key={student.studentId} style={[styles.parentStudent, { borderColor: colors.border }]}>
+                <Text style={[styles.accountTitle, { color: colors.foreground }]}>{student.name}</Text>
+                <Text style={[styles.accountBody, { color: colors.muted }]}>{student.questionsAsked} întrebări · {student.lessons.length} materii/lecții urmărite</Text>
+                {student.lessons.slice(0, 5).map((lesson) => <Text key={lesson.id} style={[styles.accountBody, { color: colors.muted, marginTop: 4 }]}>• {lesson.title} ({lesson.questionCount} întrebări)</Text>)}
+              </View>)}
+            </>}
+            <Pressable onPress={signOut} style={[styles.premiumAction, { borderColor: colors.border, marginTop: 12 }]}><Text style={[styles.premiumActionText, { color: colors.error }]}>Deconectează-te</Text></Pressable>
+          </> : <>
+            <Text style={[styles.accountTitle, { color: colors.foreground }]}>{authMode === "signup" ? "Creează un cont" : "Intră în cont"}</Text>
+            {authMode === "signup" ? <>
+              <Text style={[styles.accountBody, { color: colors.muted, marginTop: 5 }]}>Alege tipul contului</Text>
+              <View style={styles.optionWrap}>
+                {([{ id: "student", label: "Elev" }, { id: "parent", label: "Părinte" }] as const).map((item) => <Pressable key={item.id} onPress={() => setAccountType(item.id)} style={[styles.option, { backgroundColor: accountType === item.id ? `${colors.primary}16` : colors.background, borderColor: accountType === item.id ? colors.primary : colors.border }]}><Text style={[styles.optionText, { color: accountType === item.id ? colors.primary : colors.muted }]}>{item.label}</Text></Pressable>)}
+              </View>
+              <TextInput value={accountName} onChangeText={setAccountName} placeholder="Nume afișat" placeholderTextColor={colors.muted} autoComplete="name" style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border }]} />
+            </> : null}
+            <TextInput value={accountEmail} onChangeText={setAccountEmail} placeholder="Adresă de e-mail" placeholderTextColor={colors.muted} keyboardType="email-address" autoCapitalize="none" autoComplete="email" style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border, marginTop: 10 }]} />
+            <TextInput value={accountPassword} onChangeText={setAccountPassword} placeholder={authMode === "signup" ? "Parolă (minimum 10 caractere)" : "Parolă"} placeholderTextColor={colors.muted} secureTextEntry autoComplete={authMode === "signup" ? "new-password" : "current-password"} style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border, marginTop: 10 }]} />
+            <Pressable onPress={submitAccount} disabled={signUpMutation.isPending || signInMutation.isPending} style={[styles.premiumAction, { borderColor: colors.primary, backgroundColor: `${colors.primary}12`, marginTop: 12 }]}><Text style={[styles.premiumActionText, { color: colors.primary }]}>{authMode === "signup" ? "Creează contul" : "Autentificare"}</Text></Pressable>
+            <Pressable onPress={() => setAuthMode((value) => value === "signup" ? "signin" : "signup")} style={{ paddingVertical: 12 }}><Text style={[styles.premiumActionText, { color: colors.primary }]}>{authMode === "signup" ? "Am deja un cont" : "Creează un cont nou"}</Text></Pressable>
+            <Text style={[styles.accountBody, { color: colors.muted }]}>Conturile au nevoie de server cu baza de date configurată. Pentru elevi minori, creați asocierea cu părintele înainte de pilot.</Text>
+          </>}
+          {accountNotice ? <Text accessibilityRole="alert" style={[styles.accountBody, { color: accountNotice.includes("eșuat") || accountNotice.includes("eroare") ? colors.error : colors.success, marginTop: 10 }]}>{accountNotice}</Text> : null}
         </SurfaceCard>
         {saved ? (
           <View style={styles.savedToast}>
@@ -551,6 +576,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
+  accentOption: { flexDirection: "row", alignItems: "center", gap: 7, borderWidth: 1, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 9 },
+  accentDot: { width: 15, height: 15, borderRadius: 8 },
   premiumCard: { gap: 11, marginBottom: 27 },
   premiumTop: { flexDirection: "row", alignItems: "center", gap: 10 },
   premiumIcon: {
@@ -604,6 +631,7 @@ const styles = StyleSheet.create({
   },
   storageText: { flex: 1, fontSize: 11, lineHeight: 16 },
   accountCard: { gap: 8 },
+  parentStudent: { borderTopWidth: 1, marginTop: 14, paddingTop: 12 },
   accountTitle: { fontSize: 15, fontWeight: "800" },
   accountBody: { fontSize: 12, lineHeight: 18 },
   savedToast: {

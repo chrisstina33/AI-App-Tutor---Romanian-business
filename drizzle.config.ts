@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { defineConfig } from "drizzle-kit";
 
 const connectionString = process.env.DATABASE_URL;
@@ -11,5 +12,8 @@ export default defineConfig({
   dialect: "mysql",
   dbCredentials: {
     url: connectionString,
+    ...(process.env.DATABASE_SSL === "true"
+      ? { ssl: { minVersion: "TLSv1.2" as const } }
+      : {}),
   },
 });

@@ -5,6 +5,7 @@ import {
   useAudioRecorder,
   useAudioRecorderState,
 } from "expo-audio";
+import * as FileSystem from "expo-file-system/legacy";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -45,6 +46,7 @@ import {
 } from "@/services/ai-service";
 import { getApiBaseUrl } from "@/constants/api";
 import { trpc } from "@/lib/trpc";
+import { diagramSvg, getLessonDiagram } from "@/lib/diagrams";
 
 const INITIAL_MESSAGE: TutorMessage = {
   id: "welcome",
@@ -56,6 +58,15 @@ const INITIAL_MESSAGE: TutorMessage = {
 
 function currentTimestamp(): number {
   return Date.now();
+}
+
+async function readBase64(uri: string): Promise<string> {
+  if (Platform.OS !== "web") return FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+  const response = await fetch(uri);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  return btoa(binary);
 }
 
 export default function TutorScreen() {
@@ -77,6 +88,7 @@ export default function TutorScreen() {
   const [pdfBusy, setPdfBusy] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const assistantMutation = trpc.assistant.chat.useMutation();
+  const voiceMutation = trpc.assistant.transcribe.useMutation();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder);
   useEffect(() => {
@@ -94,6 +106,7 @@ export default function TutorScreen() {
       model?: string;
     },
     requestedMode: TutorMode,
+    diagram?: { kind: "parabola" | "triangle" | "forces" | "molecule"; caption: string } | null,
   ) {
     const id = createMessageId("assistant");
     const next: TutorMessage = {
@@ -103,6 +116,7 @@ export default function TutorScreen() {
       mode: requestedMode,
       provider: reply.provider,
       model: reply.model,
+      ...(diagram ? { diagram } : {}),
       createdAt: currentTimestamp(),
     };
     setMessages((current) => [...current, next]);
@@ -117,26 +131,38 @@ export default function TutorScreen() {
   }
   async function submitQuestion(text: string, requestedMode: TutorMode = mode) {
     const question = text.trim();
-    if (!question || pending) return;
+    if ((!question && !upload) || pending) return;
+    const questionText = question || `Ajută-mă să înțeleg tema atașată (${upload?.name}).`;
     setInput("");
     setPending(true);
     const userMessage: TutorMessage = {
       id: createMessageId("user"),
       role: "user",
-      text: question,
+      text: questionText,
       mode: requestedMode,
       createdAt: currentTimestamp(),
     };
     setMessages((current) => [...current, userMessage]);
-    recordTutorQuestion(subject);
+    recordTutorQuestion(subject, questionText);
     try {
       const live = await assistantMutation.mutateAsync({
         subject,
         mode: requestedMode,
-        question,
+        question: questionText,
         messages: history.slice(-12),
+        ...(upload ? {
+          attachment: {
+            name: upload.name,
+            mimeType: (upload.mimeType ?? "text/plain") as "image/png" | "image/jpeg" | "application/pdf" | "text/plain",
+            base64: await readBase64(upload.uri),
+          },
+        } : {}),
       });
-      await addReply(live, requestedMode);
+      await addReply(live, requestedMode, getLessonDiagram(subject, `${questionText} ${live.text}`));
+      if (upload) {
+        setUpload(null);
+        await clearPendingUpload();
+      }
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Eroare necunoscută";
       console.error("[Tutor] AI request failed", detail);
@@ -184,11 +210,30 @@ export default function TutorScreen() {
       } else {
         await recorder.stop();
         setRecording(false);
-        setNotice(
-          recorderState.url
-            ? "Nota vocală este pregătită. Transcrierea va fi trimisă doar după activarea serviciului de transcriere."
-            : "Nota vocală nu a fost salvată.",
-        );
+        if (!recorderState.url) {
+          setNotice("Înregistrarea nu a fost salvată. Încearcă din nou.");
+          return;
+        }
+        setNotice("Transcriu nota vocală în limba română…");
+        try {
+          let base64: string;
+          let mimeType = "audio/mp4";
+          if (Platform.OS === "web") {
+            const response = await fetch(recorderState.url);
+            mimeType = response.headers.get("content-type")?.split(";")[0] ?? "audio/webm";
+            const bytes = new Uint8Array(await response.arrayBuffer());
+            let binary = "";
+            for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+            base64 = btoa(binary);
+          } else base64 = await readBase64(recorderState.url);
+          const transcript = await voiceMutation.mutateAsync({ base64, mimeType });
+          setInput(transcript.text);
+          setShowVoiceDisclosure(false);
+          setNotice("Transcrierea este gata. Verifică textul, apoi trimite-l tutorului.");
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : "Eroare necunoscută";
+          setNotice(`Transcrierea a eșuat: ${reason}`);
+        }
       }
     } catch {
       setRecording(false);
@@ -224,6 +269,11 @@ export default function TutorScreen() {
             ? formulas.join("\n\n")
             : "În această sesiune nu a fost folosită o formulă.",
         },
+        ...messages.filter((message) => message.role === "assistant" && message.diagram).map((message) => ({
+          heading: message.diagram?.caption ?? "Schiță de lecție",
+          body: "Schiță orientativă generată automat pe baza materiei și a întrebării. Verifică notarea cu enunțul original.",
+          diagramSvg: message.diagram ? diagramSvg(message.diagram.kind) : undefined,
+        })),
         {
           heading: "Următorul pas",
           body: "Încearcă să explici ideea cu propriile cuvinte, apoi rezolvă un exercițiu fără să privești fișa.",
@@ -489,19 +539,19 @@ export default function TutorScreen() {
             accessibilityRole="button"
             accessibilityLabel="Trimite întrebarea"
             onPress={() => submitQuestion(input)}
-            disabled={!input.trim() || pending}
+            disabled={(!input.trim() && !upload) || pending}
             style={[
               styles.sendButton,
               {
                 backgroundColor:
-                  input.trim() && !pending ? colors.primary : colors.border,
+                  (input.trim() || upload) && !pending ? colors.primary : colors.border,
               },
             ]}
           >
             <MaterialIcons
               name="arrow-upward"
               size={19}
-              color={input.trim() && !pending ? "#FFFFFF" : colors.muted}
+              color={(input.trim() || upload) && !pending ? "#FFFFFF" : colors.muted}
             />
           </Pressable>
         </View>
@@ -511,9 +561,7 @@ export default function TutorScreen() {
               Notă vocală și transcriere
             </Text>
             <Text style={[styles.voiceBody, { color: colors.muted }]}>
-              Elunariq cere permisiunea microfonului înainte de înregistrare.
-              Fișierul nu este trimis și nu este pretins ca transcris până când
-              serviciul de transcriere este activat.
+              După înregistrare, vocea este trimisă serviciului de transcriere configurat pe server. Textul rezultat rămâne în casetă pentru verificare înainte să îl trimiți tutorului.
             </Text>
             <View style={styles.voiceActions}>
               <Pressable

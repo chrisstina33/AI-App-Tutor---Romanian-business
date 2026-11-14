@@ -30,10 +30,26 @@ const COMMANDS: Record<string, string> = {
   leftarrow: "←",
   Leftarrow: "⇐",
   infty: "∞",
+  partial: "∂",
+  nabla: "∇",
+  perp: "⊥",
+  parallel: "∥",
+  angle: "∠",
+  triangle: "△",
+  in: "∈",
+  notin: "∉",
   sum: "∑",
   prod: "∏",
   int: "∫",
   degree: "°",
+  sin: "sin",
+  cos: "cos",
+  tan: "tan",
+  log: "log",
+  ln: "ln",
+  lim: "lim",
+  max: "max",
+  min: "min",
 };
 
 const SUPERSCRIPTS: Record<string, string> = {
@@ -88,7 +104,7 @@ export function formatLatexForDisplay(input: string): string {
 
   for (let pass = 0; pass < 4; pass += 1) {
     value = value
-      .replace(/\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, "$1⁄$2")
+      .replace(/\\(?:dfrac|tfrac|frac)\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, "$1⁄$2")
       .replace(/\\sqrt\s*\{([^{}]*)\}/g, "√$1")
       .replace(/\\(?:text|mathrm|mathbf|operatorname)\s*\{([^{}]*)\}/g, "$1")
       .replace(/\^\{([^{}]*)\}/g, (_match, group: string) =>

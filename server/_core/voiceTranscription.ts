@@ -60,6 +60,45 @@ export type WhisperResponse = {
 
 export type TranscriptionResponse = WhisperResponse; // Return native Whisper API response directly
 
+export async function transcribeAudioBase64(options: {
+  base64: string;
+  mimeType: string;
+  language?: string;
+}): Promise<TranscriptionResponse | TranscriptionError> {
+  if (!ENV.forgeApiUrl || !ENV.forgeApiKey) {
+    return { error: "Serviciul de transcriere nu este configurat pe server.", code: "SERVICE_ERROR" };
+  }
+  const audioBuffer = Buffer.from(options.base64, "base64");
+  if (audioBuffer.length === 0 || audioBuffer.length > 16 * 1024 * 1024) {
+    return { error: "Înregistrarea trebuie să aibă maximum 16 MB.", code: "FILE_TOO_LARGE" };
+  }
+  const mimeType = options.mimeType || "audio/mp4";
+  if (!/^audio\/(mpeg|mp3|wav|wave|ogg|webm|m4a|mp4|x-m4a)$/i.test(mimeType)) {
+    return { error: "Formatul audio nu este acceptat.", code: "INVALID_FORMAT" };
+  }
+  try {
+    const formData = new FormData();
+    const blob = new Blob([new Uint8Array(audioBuffer)], { type: mimeType });
+    formData.append("file", blob, `voice.${getFileExtension(mimeType)}`);
+    formData.append("model", "whisper-1");
+    formData.append("response_format", "verbose_json");
+    formData.append("language", options.language || "ro");
+    formData.append("prompt", "Transcrie în limba română mesajul vocal al elevului, păstrând termenii de matematică, fizică și chimie.");
+    const baseUrl = ENV.forgeApiUrl.endsWith("/") ? ENV.forgeApiUrl : `${ENV.forgeApiUrl}/`;
+    const response = await fetch(new URL("v1/audio/transcriptions", baseUrl), {
+      method: "POST",
+      headers: { authorization: `Bearer ${ENV.forgeApiKey}`, "Accept-Encoding": "identity" },
+      body: formData,
+    });
+    if (!response.ok) return { error: "Serviciul de transcriere a respins înregistrarea.", code: "TRANSCRIPTION_FAILED", details: `HTTP ${response.status}` };
+    const result = (await response.json()) as WhisperResponse;
+    if (typeof result.text !== "string") return { error: "Răspuns de transcriere invalid.", code: "SERVICE_ERROR" };
+    return result;
+  } catch (error) {
+    return { error: "Transcrierea nu a reușit.", code: "SERVICE_ERROR", details: error instanceof Error ? error.message : "Unknown error" };
+  }
+}
+
 export type TranscriptionError = {
   error: string;
   code:

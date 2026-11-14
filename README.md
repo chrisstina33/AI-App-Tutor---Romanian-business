@@ -9,7 +9,7 @@ From the project root:
 
 ```bash
 pnpm install
-pnpm db:push
+pnpm db:migrate
 pnpm dev
 ```
 
@@ -33,23 +33,23 @@ Open `web/index.html` with a static server if you want to inspect the plain HTML
 
 ## Works immediately
 
-The dashboard, subject filters, lesson cards, quick actions, progress view, profile editing, subject and explanation preferences, light/dark theme switcher, AsyncStorage persistence, tutor conversation UI, guided-mode actions, direct-answer toggle, loading states, and upload validation work without extra credentials. Homework files are shown as selected/ready to send; the app does not pretend that a PDF or image has been analyzed. The profile now presents the proposed Premium plan and its current checkout limitation; no subscription purchase is active.
+The dashboard, subject filters, quick actions, progress view, profile editing, subject and explanation preferences, light/dark theme switcher, tutor conversation UI, guided-mode actions, direct-answer toggle, file selection, and voice recording work in the client. Lesson cards use actual student prompts and activity rather than static sample lessons. Images and PDFs are passed to the configured multimodal model; TXT attachments are decoded and included with the tutor request. Voice notes are sent to the configured transcription service and returned as editable text. Subject-specific schematic diagrams are rendered in chat and included in tutor PDFs. Account registration/sign-in, student progress sync, parent invite codes, and parent progress overview are implemented in the API and require the database migration below. Premium is still a proposed plan and does not charge users.
 
 The tutor calls `assistant.chat` through tRPC. If the configured server-side LLM responds, the UI labels the answer as Live tutor. If the provider is unavailable, times out, returns an empty answer, or rejects the request, the UI uses deterministic, clearly labeled Demonstration mode content instead.
 
 ## Configuration and limitations
 
-The app calls the Render backend configured by `EXPO_PUBLIC_API_BASE_URL`; AI provider credentials remain server-side on Render and are never placed in the client bundle. Profile preferences and progress are stored only on the current device. Login and account synchronization are not enabled, so the app does not require Manus OAuth or Manus hosting. Real PDF/image understanding would require a storage-backed upload plus a supported file/image analysis pipeline. The current upload UI validates the file and exposes its metadata but does not claim content analysis.
+The app calls the Render backend configured by `EXPO_PUBLIC_API_BASE_URL`; AI provider credentials remain server-side and are never placed in the client bundle. For account features, configure `DATABASE_URL` on the server and apply the checked-in migrations with `pnpm db:migrate`. Set `DATABASE_SSL=true` for public TLS-only MySQL-compatible services such as TiDB Cloud Starter. Account creation currently uses email and password (scrypt password hash) and bearer sessions expire after 30 days. Configure HTTPS and account recovery/email verification before collecting real student accounts. The client stores the session token in AsyncStorage; move it to SecureStore before production native release.
 
-Voice controls are represented as a permission-aware preference and should be connected to recording/transcription only when the app needs that capability.
+Image/PDF analysis requires a vision/document-capable model configured on the backend. Voice transcription requires `BUILT_IN_FORGE_API_URL` and `BUILT_IN_FORGE_API_KEY`. If either is unavailable, the request reports an error rather than claiming analysis succeeded. The automatic diagrams are topic-based instructional schematics, not exact measurements or proof diagrams.
 
 ## Versiunea română și pedagogia Elunariq
 
-Interfața livrată este în română și nu folosește saluturi personalizate artificiale. Tutorul folosește o regulă strictă de dialog: un singur pas, o singură întrebare, apoi așteaptă încercarea elevului. Răspunsurile sunt afișate progresiv în client. În mesajele mobile, notația matematică uzuală este transformată într-o formă lizibilă, fără delimitatorii LaTeX; aceasta este o alternativă pentru simbolurile comune, nu un motor complet de compoziție matematică.
+Interfața livrată este în română și nu folosește saluturi personalizate artificiale. Tutorul folosește o regulă strictă de dialog: un singur pas, o singură întrebare, apoi așteaptă încercarea elevului. Răspunsurile sunt afișate progresiv în client. În mesajele mobile, notația LaTeX uzuală este convertită într-un fallback cu italic, simboluri și indici Unicode; nu este încă un motor complet de compoziție pentru formule complexe.
 
 Serverul rutează `gpt-5-mini` pentru dialog de rutină, scanare, clasificare și feedback, `gpt-5` pentru răspunsuri extinse și `gpt-5.5` pentru probleme premium foarte lungi. Catalogul live verificat nu expune `gpt-5-pro`, deci Elunariq nu declară că folosește un model indisponibil. Proxy-ul curent nu oferă streaming, iar afișarea lentă este realizată transparent în client după primirea răspunsului.
 
-Elunariq generează o fișă PDF cu noțiunile și formulele discutate în sesiunea curentă. În PDF, MathJax typesetează formulele când resursa online este disponibilă; un fallback fără comenzi LaTeX păstrează formula lizibilă când MathJax nu se încarcă. Pe Web, browserul deschide dialogul de printare, de unde elevul poate alege „Save as PDF”. Pentru formulele complexe și randarea fără internet, integrați și livrați motorul de matematică local înainte de lansare. Nota vocală cere permisiunea microfonului; transcrierea reală rămâne dezactivată până când este configurat endpointul de upload și transcriere, iar aplicația spune explicit acest lucru elevului.
+Elunariq generează o fișă PDF cu noțiunile, formulele și diagramele din sesiunea curentă. PDF-ul folosește MathJax când resursa online este disponibilă și fallback când nu se încarcă. Pe Web, browserul deschide dialogul de printare; pe mobil se folosește partajarea Expo. Formulele complexe și renderizarea offline rămân de îmbunătățit.
 
 În profil apare planul propus de 49,99 lei/lună și beneficiile aflate în validare. Prima săptămână este documentată doar ca interval de 9–19 lei, deci nu este prezentată ca ofertă finală. Checkout-ul, verificarea server-side a drepturilor Premium și restaurarea/anularea achizițiilor trebuie conectate la platformele de billing alese înainte de lansare.
 

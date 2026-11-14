@@ -30,15 +30,15 @@
 - [ ] Route live AI calls through server-side credentials only; do not expose API keys in browser-side or native bundle code.
 - [ ] Provide a deterministic, clearly labeled demonstration provider when live LLM configuration or a usable response is unavailable.
 - [ ] Validate homework types PDF, TXT, PNG, and JPG plus a 10 MB size limit; show selected file name/type, processing state, removal before submission, and clear unsupported-file errors.
-- [ ] Explain the fallback limitation when actual PDF/image contents are not processed instead of fabricating analysis.
+- [x] Send selected image/PDF/TXT content to the configured tutor service and report processing errors instead of claiming success.
 
 ## 5. Add profile, auth state, persistence, and preferences
 
-- [x] Keep login disabled; the app does not depend on Manus hosting or OAuth.
+- [x] Add e-mail/password accounts, expiring bearer sessions, learner progress sync, and parent invitation/linking without Manus OAuth.
 - [ ] Let students view/edit display name, choose preferred subjects, select learning level, choose explanation style, review saved lessons, track completed exercises, view learning progress, and configure basic app preferences.
 - [ ] Persist preferences and learning history using available device storage, with a clear “Saved on this device” disclosure.
 - [ ] Add light/dark/system theme controls.
-- [ ] Add optional voice controls only with permission-aware native/browser fallback messaging.
+- [x] Record a voice note, transcribe it on the configured server, and let the learner edit the transcript before sending.
 
 ## 6. Verify and document the delivered MVP
 
@@ -56,5 +56,9 @@
 - [x] Utilizatorul poate genera PDF pentru conversația tutorului și recapitularea săptămânală, cu formule LaTeX păstrate ca text de lucru.
 - [x] Profilul include rol elev/părinte, nivel, stil de explicație, preferințe de materii, temă, avatar editabil cu disclosure și stocare locală declarată.
 - [ ] Uploadul de imagine/PDF trebuie conectat la stocare și analiză multimodală reală înainte ca aplicația să pretindă că a scanat conținutul.
-- [ ] Vocea trebuie conectată la upload audio și transcriere server-side; UI-ul și disclosure-ul sunt livrate, dar aplicația nu pretinde transcriere când serviciul lipsește.
+- [x] Uploadul imaginii/PDF-ului ajunge la analiza multimodală server-side când modelul configurat acceptă formatul.
+- [x] Vocea ajunge la transcriere server-side; rezultatul este editabil înainte de trimiterea la tutor.
+- [x] Conturile elev/părinte, codul de asociere temporar și progresul sincronizat au endpointuri și ecrane. Migrarea DB trebuie aplicată în mediul de lansare.
+- [ ] Mută tokenul sesiunii din AsyncStorage în SecureStore și adaugă verificarea adresei și recuperarea contului.
+- [x] Generează schițe SVG pentru subiecte de geometrie, funcții, mecanică și legături moleculare și include-le în PDF.
 - [ ] Checkout-ul pentru planul propus 9–19 lei în prima săptămână și 49,99 lei/lună nu este încă activat.

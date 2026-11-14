@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { invokeLLM, type Message } from "./_core/llm";
+import { transcribeAudioBase64 } from "./_core/voiceTranscription";
 import { publicProcedure, router } from "./_core/trpc";
 
 const tutorModes = ["guided", "hint", "concept", "example", "check", "practice", "summary", "direct"] as const;
@@ -22,15 +23,38 @@ const contentToText = (content: unknown): string => {
 };
 
 export const assistantRouter = router({
-  chat: publicProcedure.input(z.object({ subject: z.string().min(1).max(80), mode: z.enum(tutorModes), question: z.string().min(1).max(4000), messages: z.array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().max(4000) })).max(20) })).mutation(async ({ input }) => {
+  transcribe: publicProcedure.input(z.object({ base64: z.string().min(1).max(23_000_000), mimeType: z.string().max(80) })).mutation(async ({ input }) => {
+    const result = await transcribeAudioBase64({ ...input, language: "ro" });
+    if ("error" in result) throw new Error(result.error);
+    return { text: result.text, duration: result.duration, language: result.language };
+  }),
+  chat: publicProcedure.input(z.object({ subject: z.string().min(1).max(80), mode: z.enum(tutorModes), question: z.string().max(4000), messages: z.array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().max(4000) })).max(20), attachment: z.object({ name: z.string().max(180), mimeType: z.enum(["image/png", "image/jpeg", "application/pdf", "text/plain"]), base64: z.string().max(15_000_000) }).optional() }).refine((input) => Boolean(input.question.trim()) || Boolean(input.attachment), { message: "Scrie o întrebare sau atașează tema." })).mutation(async ({ input }) => {
     const selected = modelFor(input);
     const history: Message[] = input.messages.map((message) => ({ role: message.role, content: message.text }));
+    let userContent: Message["content"] = `Materia: ${input.subject}\nMod: ${input.mode}\nÎntrebarea elevului: ${input.question || "Analizează enunțul din fișierul atașat și ajută-mă cu primul pas."}`;
+    if (input.attachment) {
+      const dataUrl = `data:${input.attachment.mimeType};base64,${input.attachment.base64}`;
+      if (input.attachment.mimeType.startsWith("image/")) {
+        userContent = [
+          { type: "text", text: `${userContent}\nFișier atașat: ${input.attachment.name}. Citește enunțul vizibil din imagine. Dacă nu este lizibil, cere o fotografie mai clară.` },
+          { type: "image_url", image_url: { url: dataUrl, detail: "high" } },
+        ];
+      } else if (input.attachment.mimeType === "application/pdf") {
+        userContent = [
+          { type: "text", text: `${userContent}\nFișier PDF atașat: ${input.attachment.name}. Citește enunțul din document. Dacă nu îl poți accesa, spune clar acest lucru.` },
+          { type: "file_url", file_url: { url: dataUrl, mime_type: "application/pdf" } },
+        ];
+      } else {
+        const decoded = Buffer.from(input.attachment.base64, "base64").toString("utf8").slice(0, 40_000);
+        userContent = `${userContent}\nConținutul fișierului ${input.attachment.name}:\n${decoded}`;
+      }
+    }
     const result = await invokeLLM({
       model: selected.model,
       messages: [
         { role: "system", content: systemPrompt },
         ...history,
-        { role: "user", content: `Materia: ${input.subject}\nMod: ${input.mode}\nÎntrebarea elevului: ${input.question}` },
+        { role: "user", content: userContent },
       ],
       maxCompletionTokens: selected.tier === "premium" ? 1400 : selected.tier === "extended" ? 1000 : 700,
       reasoning: selected.tier === "routine" ? { effort: "minimal" } : { effort: selected.tier === "premium" ? "high" : "medium" },

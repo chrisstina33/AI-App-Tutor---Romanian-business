@@ -1,5 +1,5 @@
 export type TutorMode = "guided" | "hint" | "concept" | "example" | "check" | "practice" | "summary" | "direct";
-export type TutorMessage = { id: string; role: "user" | "assistant"; text: string; mode?: TutorMode; createdAt: number; provider?: "live"; model?: string };
+export type TutorMessage = { id: string; role: "user" | "assistant"; text: string; mode?: TutorMode; createdAt: number; provider?: "live"; model?: string; diagram?: { kind: "parabola" | "triangle" | "forces" | "molecule"; caption: string } };
 export type TutorInput = { question: string; subject: string; mode: TutorMode; history: Array<Pick<TutorMessage, "role" | "text">> };
 export type TutorReply = { text: string; provider: "live"; model?: string };
 

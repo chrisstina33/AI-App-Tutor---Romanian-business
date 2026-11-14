@@ -8,6 +8,7 @@ import "react-native-reanimated";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { LearnerDataProvider } from "@/lib/learner-context";
 import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-context";
+import { AuthProvider } from "@/lib/auth-context";
 
 import { trpc, createTRPCClient } from "@/lib/trpc";
 
@@ -51,11 +52,13 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           {/* Default to hiding native headers so raw route segments don't appear (e.g. "(tabs)", "products/[id]"). */}
           {/* If a screen needs the native header, explicitly enable it and set a human title via Stack.Screen options. */}
-          <LearnerDataProvider>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="(tabs)" />
-            </Stack>
-          </LearnerDataProvider>
+          <AuthProvider>
+            <LearnerDataProvider>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="(tabs)" />
+              </Stack>
+            </LearnerDataProvider>
+          </AuthProvider>
           <StatusBar style="auto" />
         </QueryClientProvider>
       </trpc.Provider>

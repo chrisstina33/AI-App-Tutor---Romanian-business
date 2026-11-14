@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import { createPool } from "mysql2/promise";
 import { InsertUser, learnerStates, users } from "../drizzle/schema";
 import type { LearnerState } from "../shared/learning";
 import { ENV } from "./_core/env";
@@ -10,7 +11,14 @@ let _db: ReturnType<typeof drizzle> | null = null;
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      const pool = createPool({
+        uri: process.env.DATABASE_URL,
+        connectionLimit: 10,
+        ...(process.env.DATABASE_SSL === "true"
+          ? { ssl: { minVersion: "TLSv1.2" as const } }
+          : {}),
+      });
+      _db = drizzle(pool);
     } catch {
       console.warn("[Database] Failed to connect");
       _db = null;

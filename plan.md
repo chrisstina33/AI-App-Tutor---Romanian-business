@@ -1,7 +1,7 @@
 # Elunariq Learning Assistant — Implementation Plan
 
 ## Product scope
-Elunariq is a portrait-first learning companion for high-school students. The MVP focuses on four connected flows: a calm dashboard for choosing what to study, a guided AI tutor that emphasizes hints and reasoning, a progress view for lessons and goals, and a profile/settings surface for preferences and theme. There is no login; preferences and progress are stored locally on the device. When the configured server-side LLM is available, tutor requests use it through tRPC. When it is unavailable, the UI switches to a clearly labeled demonstration mode with deterministic, pedagogically framed example responses.
+Elunariq is a portrait-first learning companion for high-school students. The MVP focuses on a dashboard built from the student's tutor activity, guided AI tutoring, progress, and profile/settings. E-mail/password accounts, server-synced student progress, parent invitations, and parent progress views are implemented against the existing MySQL backend. When the configured server-side LLM is available, tutor requests use it through tRPC. The app only uses its clearly labeled demonstration mode when the AI service is unavailable.
 
 ## Implementation approach
 
@@ -10,8 +10,10 @@ Elunariq is a portrait-first learning companion for high-school students. The MV
 - Keep app data and copy in small typed modules under `lib/` and `services/` so the screens remain readable and maintainable.
 - Add a server-side tutor procedure that calls the starter's existing server LLM helper without exposing credentials to the native or web bundle. The client service normalizes live responses and falls back to a clearly labeled demo provider on timeout, missing credentials, empty content, or upstream errors.
 - Persist theme, display name, preferred subjects, learning level, explanation style, saved lessons, and completed exercise count with AsyncStorage. The UI labels this data as “Saved on this device” until a server-backed profile table is added.
-- Keep account login disabled until a separate authentication provider is selected.
-- Support homework file selection through a platform-safe document/image picker abstraction. Validate PDF/TXT/PNG/JPG and a 10 MB limit, show the selected filename, and explicitly distinguish “ready to send” from “analyzed”. Actual PDF/image analysis remains a documented server/storage follow-up unless a supported public file URL is available.
+- Provide e-mail/password sign-in with scrypt password hashes, expiring API sessions, server-side student progress sync, and one-time parent invitation codes. Apply migrations and configure production account recovery, email verification, and mobile secure token storage before launch.
+- Support homework selection and send image/PDF/TXT contents to the tutor service; validate supported types and the 10 MB limit. Image/PDF understanding depends on a vision/document model configured on the server.
+- Transcribe voice notes on the server when Forge Speech-to-Text is configured; let the student review and edit the transcript before sending it to the tutor.
+- Generate topic-based SVG teaching schematics in tutor answers and include them in PDF exports. The current diagrams are explanatory schematics, not exact geometric constructions.
 - Add accessible empty/loading/error states, keyboard-dismiss-friendly inputs, haptic feedback on primary actions, and compact modal sheets for search, tutor controls, and profile editing.
 
 ## Project structure

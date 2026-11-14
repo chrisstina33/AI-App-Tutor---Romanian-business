@@ -15,6 +15,13 @@
       "when": 1793155200000,
       "tag": "0001_learner_states",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1794665523000,
+      "tag": "0002_auth_parent_accounts",
+      "breakpoints": true
     }
   ]
 }

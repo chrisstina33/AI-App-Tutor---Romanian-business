@@ -453,7 +453,9 @@ export type ModelsResponse = {
 };
 
 export async function listLLMModels(): Promise<ModelsResponse> {
-  assertApiKey(ENV.forgeApiKey);
+  if (!ENV.forgeApiKey) {
+    throw new Error("BUILT_IN_FORGE_API_KEY is not configured.");
+  }
 
   const url =
     ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0

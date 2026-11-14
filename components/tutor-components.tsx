@@ -12,6 +12,7 @@ import { useColors } from "@/hooks/use-colors";
 import type { PendingUpload } from "@/lib/storage";
 import { formatLatexForDisplay, splitMathSegments } from "@/lib/math-format";
 import type { TutorMessage } from "@/services/ai-service";
+import { LearningDiagram } from "@/components/learning-diagram";
 
 const ALLOWED_MIME_TYPES = [
   "application/pdf",
@@ -85,6 +86,7 @@ export function TutorMessageCard({ message }: { message: TutorMessage }) {
             </Text>
           );
         })}
+        {assistant && message.diagram ? <LearningDiagram kind={message.diagram.kind} caption={message.diagram.caption} /> : null}
       </View>
     </View>
   );
@@ -114,7 +116,9 @@ export function UploadCard({
       if (result.canceled) return;
       const asset = result.assets?.[0];
       if (!asset) return;
-      if (asset.mimeType && !ALLOWED_MIME_TYPES.includes(asset.mimeType)) {
+      const extensionMime: Record<string, string> = { pdf: "application/pdf", txt: "text/plain", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg" };
+      const mimeType = asset.mimeType ?? extensionMime[asset.name.split(".").pop()?.toLowerCase() ?? ""];
+      if (!mimeType || !ALLOWED_MIME_TYPES.includes(mimeType)) {
         setError("Alege un fișier PDF, TXT, PNG sau JPG.");
         return;
       }
@@ -125,7 +129,7 @@ export function UploadCard({
       onChange({
         name: asset.name,
         uri: asset.uri,
-        mimeType: asset.mimeType,
+        mimeType,
         size: asset.size,
         status: "selected",
       });
@@ -156,7 +160,7 @@ export function UploadCard({
         </Text>
         <Text style={[styles.uploadHint, { color: colors.muted }]}>
           {value
-            ? "Gata de trimis · încă neanalizat"
+            ? "Atașat · va fi trimis tutorului la următorul mesaj"
             : "PDF, TXT, PNG, JPG · maximum 10 MB"}
         </Text>
         {error ? (
