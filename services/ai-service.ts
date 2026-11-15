@@ -1,5 +1,8 @@
+import type { TutorDrawing } from "@/shared/tutor-drawing";
+import type { TutorAnalysis } from "@/shared/tutor-analysis";
+
 export type TutorMode = "guided" | "hint" | "concept" | "example" | "check" | "practice" | "summary" | "direct";
-export type TutorMessage = { id: string; role: "user" | "assistant"; text: string; mode?: TutorMode; createdAt: number; provider?: "live"; model?: string; diagram?: { kind: "parabola" | "triangle" | "forces" | "molecule"; caption: string } };
+export type TutorMessage = { id: string; role: "user" | "assistant"; text: string; mode?: TutorMode; createdAt: number; provider?: "live"; model?: string; diagram?: { kind: "parabola" | "triangle" | "forces" | "molecule"; caption: string }; drawing?: TutorDrawing; analysis?: TutorAnalysis };
 export type TutorInput = { question: string; subject: string; mode: TutorMode; history: Array<Pick<TutorMessage, "role" | "text">> };
 export type TutorReply = { text: string; provider: "live"; model?: string };
 
@@ -24,9 +27,14 @@ export function createMessageId(prefix: string): string { return `${prefix}-${Da
 export async function revealSlowly(text: string, onUpdate: (partial: string) => void): Promise<void> {
   const tokens = text.split(/(\s+)/);
   let partial = "";
-  for (const token of tokens) {
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
     partial += token;
     onUpdate(partial);
-    await new Promise((resolve) => setTimeout(resolve, token.trim() ? 34 : 12));
+    if (!token.trim()) continue;
+    const sentenceEnd = /[.!?…:]$/.test(token);
+    const paragraphEnd = sentenceEnd && Boolean(tokens[index + 1]?.includes("\n\n"));
+    const delay = paragraphEnd ? 900 : sentenceEnd ? 520 : 85;
+    await new Promise((resolve) => setTimeout(resolve, delay));
   }
 }

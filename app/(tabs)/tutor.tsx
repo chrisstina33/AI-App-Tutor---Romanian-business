@@ -35,6 +35,7 @@ import { generateLearningPdf } from "@/lib/pdf";
 import {
   clearPendingUpload,
   loadPendingUpload,
+  savePendingUpload,
   type PendingUpload,
 } from "@/lib/storage";
 import {
@@ -47,6 +48,8 @@ import {
 import { getApiBaseUrl } from "@/constants/api";
 import { trpc } from "@/lib/trpc";
 import { diagramSvg, getLessonDiagram } from "@/lib/diagrams";
+import { tutorDrawingSvg } from "@/lib/tutor-drawing";
+import type { TutorDrawing } from "@/shared/tutor-drawing";
 
 const INITIAL_MESSAGE: TutorMessage = {
   id: "welcome",
@@ -71,7 +74,7 @@ async function readBase64(uri: string): Promise<string> {
 
 export default function TutorScreen() {
   const colors = useColors();
-  const { recordTutorQuestion } = useLearnerData();
+  const { recordTutorQuestion, state: learnerState } = useLearnerData();
   const params = useLocalSearchParams<{ autoUpload?: string }>();
   const [subject, setSubject] = useState(SUBJECTS[0].label);
   const [agent, setAgent] = useState("Ghid socratic");
@@ -104,6 +107,8 @@ export default function TutorScreen() {
       text: string;
       provider: "live";
       model?: string;
+      drawing?: TutorDrawing;
+      analysis?: TutorMessage["analysis"];
     },
     requestedMode: TutorMode,
     diagram?: { kind: "parabola" | "triangle" | "forces" | "molecule"; caption: string } | null,
@@ -116,11 +121,12 @@ export default function TutorScreen() {
       mode: requestedMode,
       provider: reply.provider,
       model: reply.model,
-      ...(diagram ? { diagram } : {}),
+      ...(reply.drawing ? { drawing: reply.drawing } : diagram ? { diagram } : {}),
+      ...(reply.analysis ? { analysis: reply.analysis } : {}),
       createdAt: currentTimestamp(),
     };
     setMessages((current) => [...current, next]);
-    setNotice(`${ro.liveTutor} · răspunsul este afișat treptat.`);
+    setNotice(`${ro.liveTutor} · răspunsul este afișat treptat.${reply.analysis?.confidence !== undefined && reply.analysis.confidence >= 0.8 && reply.analysis.subject !== "necunoscut" ? ` Materie detectată: ${reply.analysis.subject}.` : ""}`);
     await revealSlowly(reply.text, (partial) =>
       setMessages((current) =>
         current.map((message) =>
@@ -143,12 +149,14 @@ export default function TutorScreen() {
       createdAt: currentTimestamp(),
     };
     setMessages((current) => [...current, userMessage]);
-    recordTutorQuestion(subject, questionText);
+    let recordedQuestion = false;
     try {
       const live = await assistantMutation.mutateAsync({
         subject,
         mode: requestedMode,
         question: questionText,
+        learnerLevel: learnerState.preferences?.level,
+        explanationStyle: learnerState.preferences?.explanationStyle,
         messages: history.slice(-12),
         ...(upload ? {
           attachment: {
@@ -158,12 +166,35 @@ export default function TutorScreen() {
           },
         } : {}),
       });
-      await addReply(live, requestedMode, getLessonDiagram(subject, `${questionText} ${live.text}`));
+      const confidentSubject = live.analysis && live.analysis.confidence >= 0.8 && live.analysis.subject !== "necunoscut"
+        ? live.analysis.subject
+        : null;
+      const effectiveSubject = confidentSubject ?? subject;
+      if (confidentSubject) setSubject(confidentSubject);
+      recordTutorQuestion(effectiveSubject, questionText);
+      recordedQuestion = true;
+      const fallbackDiagram = live.drawing ? null : getLessonDiagram(effectiveSubject, `${questionText} ${live.text}`);
+      const pdfReply: TutorMessage = {
+        id: createMessageId("mastery-pdf"),
+        role: "assistant",
+        text: `Enunțul elevului: ${questionText}\n\n${live.text}`,
+        mode: requestedMode,
+        provider: live.provider,
+        model: live.model,
+        ...(live.drawing ? { drawing: live.drawing } : fallbackDiagram ? { diagram: fallbackDiagram } : {}),
+        analysis: live.analysis,
+        createdAt: currentTimestamp(),
+      };
+      await addReply(live, requestedMode, fallbackDiagram);
+      if (requestedMode === "check" && live.analysis?.mastery === "demonstrated") {
+        await exportPdf([pdfReply], effectiveSubject);
+      }
       if (upload) {
         setUpload(null);
         await clearPendingUpload();
       }
     } catch (error) {
+      if (!recordedQuestion) recordTutorQuestion(subject, questionText);
       const detail = error instanceof Error ? error.message : "Eroare necunoscută";
       console.error("[Tutor] AI request failed", detail);
       const networkFailure =
@@ -242,11 +273,12 @@ export default function TutorScreen() {
       );
     }
   }
-  async function exportPdf() {
+  async function exportPdf(additionalMessages: TutorMessage[] = [], pdfSubject = subject) {
     if (pdfBusy) return;
     setPdfBusy(true);
     try {
-      const tutorNotes = messages
+      const exportMessages = [...messages, ...additionalMessages];
+      const tutorNotes = exportMessages
         .filter(
           (message) => message.role === "assistant" && message.id !== "welcome",
         )
@@ -255,8 +287,8 @@ export default function TutorScreen() {
       const lessonText = tutorNotes.join("\n\n");
       const formulas =
         lessonText.match(/\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\]/g) ?? [];
-      await generateLearningPdf(`Fișă de recapitulare · ${subject}`, [
-        { heading: "Materia", body: subject },
+      await generateLearningPdf(`Fișă de recapitulare · ${pdfSubject}`, [
+        { heading: "Materia", body: pdfSubject },
         {
           heading: "Noțiuni teoretice discutate",
           body:
@@ -269,17 +301,17 @@ export default function TutorScreen() {
             ? formulas.join("\n\n")
             : "În această sesiune nu a fost folosită o formulă.",
         },
-        ...messages.filter((message) => message.role === "assistant" && message.diagram).map((message) => ({
-          heading: message.diagram?.caption ?? "Schiță de lecție",
-          body: "Schiță orientativă generată automat pe baza materiei și a întrebării. Verifică notarea cu enunțul original.",
-          diagramSvg: message.diagram ? diagramSvg(message.diagram.kind) : undefined,
+        ...exportMessages.filter((message) => message.role === "assistant" && (message.drawing || message.diagram)).map((message) => ({
+          heading: message.drawing?.caption ?? message.diagram?.caption ?? "Schiță de lecție",
+          body: message.drawing?.steps.map((step) => `${step.calculation}\n${step.meaning}`).join("\n\n") ?? "Schiță orientativă pe baza materiei și a întrebării. Verifică notarea cu enunțul original.",
+          diagramSvg: message.drawing ? tutorDrawingSvg(message.drawing) : message.diagram ? diagramSvg(message.diagram.kind) : undefined,
         })),
         {
           heading: "Următorul pas",
           body: "Încearcă să explici ideea cu propriile cuvinte, apoi rezolvă un exercițiu fără să privești fișa.",
         },
       ]);
-      setNotice(ro.pdfReady);
+      setNotice(Platform.OS === "web" ? "Fișa PDF a fost descărcată automat." : ro.pdfReady);
     } catch {
       setNotice(
         "Fișa PDF nu a putut fi pregătită sau partajată. Încearcă din nou după ce verifici conexiunea și opțiunile dispozitivului.",
@@ -463,17 +495,20 @@ export default function TutorScreen() {
               </Text>
             </View>
           ) : null}
-          {upload ? (
-            <View style={styles.attachedWrap}>
-              <UploadCard
-                value={upload}
-                onChange={async (value) => {
-                  setUpload(value);
-                  if (!value) await clearPendingUpload();
-                }}
-              />
-            </View>
-          ) : null}
+          <View style={styles.attachedWrap}>
+            <UploadCard
+              value={upload}
+              compact
+              onChange={async (value) => {
+                setUpload(value);
+                if (value) {
+                  await savePendingUpload(value);
+                } else {
+                  await clearPendingUpload();
+                }
+              }}
+            />
+          </View>
         </ScrollView>
         <View style={styles.quickActions}>
           <ScrollView
@@ -602,7 +637,7 @@ export default function TutorScreen() {
               disabled={pdfBusy}
             >
               <Text style={[styles.modeToggle, { color: colors.primary }]}>
-                {pdfBusy ? "Se pregătește…" : "Fișă de teorie PDF"}
+                {pdfBusy ? "Se pregătește…" : "Descarcă fișa PDF"}
               </Text>
             </Pressable>
             <Pressable

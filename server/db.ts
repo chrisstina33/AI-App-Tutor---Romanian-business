@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { createPool } from "mysql2/promise";
+import { createPool } from "mysql2";
 import { InsertUser, learnerStates, users } from "../drizzle/schema";
 import type { LearnerState } from "../shared/learning";
 import { ENV } from "./_core/env";

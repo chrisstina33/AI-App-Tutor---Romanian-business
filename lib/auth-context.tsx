@@ -12,8 +12,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   useEffect(() => { void readAuthToken().then((saved) => { setToken(saved); setReady(true); }).catch(() => setReady(true)); }, []);
   const me = trpc.auth.me.useQuery(undefined, { enabled: ready && Boolean(token), retry: false });
+  useEffect(() => {
+    if (me.error?.data?.code !== "UNAUTHORIZED") return;
+    void clearAuthToken().catch(() => undefined).finally(() => {
+      setToken(null);
+      setSessionUser(null);
+    });
+  }, [me.error]);
   const beginSession = useCallback(async (newToken: string, account: AuthUser) => { await saveAuthToken(newToken); setToken(newToken); setSessionUser(account); }, []);
-  const endSession = useCallback(async () => { await clearAuthToken(); setToken(null); setSessionUser(null); }, []);
+  const endSession = useCallback(async () => { try { await clearAuthToken(); } catch { /* Clear local session state even if storage is unavailable. */ } setToken(null); setSessionUser(null); }, []);
   const user = token ? (sessionUser ?? me.data ?? null) : null;
   const value = useMemo(() => ({ token, user, ready, beginSession, endSession }), [token, user, ready, beginSession, endSession]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

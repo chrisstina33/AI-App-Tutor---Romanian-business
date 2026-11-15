@@ -1,9 +1,11 @@
 import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
+  Platform,
   StyleSheet,
   Text,
   View,
@@ -57,6 +59,13 @@ export function TutorMessageCard({ message }: { message: TutorMessage }) {
             {assistant ? "Elunariq" : "Tu"}
           </Text>
         </View>
+        {assistant && message.analysis ? (
+          <Text style={[styles.analysisMeta, { color: colors.muted }]}>
+            {message.analysis.schoolLevel !== "necunoscut" ? `${message.analysis.schoolLevel} · ` : ""}
+            {message.analysis.difficulty !== "necunoscut" ? `dificultate ${message.analysis.difficulty}` : ""}
+            {message.analysis.mastery === "demonstrated" ? " · înțelegere demonstrată" : ""}
+          </Text>
+        ) : null}
         {message.text.split("\n").map((line, index) => {
           const heading = line.startsWith("#");
           const bullet = line.startsWith("-") || /^\d\./.test(line);
@@ -86,7 +95,7 @@ export function TutorMessageCard({ message }: { message: TutorMessage }) {
             </Text>
           );
         })}
-        {assistant && message.diagram ? <LearningDiagram kind={message.diagram.kind} caption={message.diagram.caption} /> : null}
+        {assistant && message.drawing ? <LearningDiagram drawing={message.drawing} /> : assistant && message.diagram ? <LearningDiagram kind={message.diagram.kind} caption={message.diagram.caption} /> : null}
       </View>
     </View>
   );
@@ -141,6 +150,73 @@ export function UploadCard({
       setLoading(false);
     }
   }
+  async function capturePhoto() {
+    setError(null);
+    if (Platform.OS !== "web") {
+      setLoading(true);
+      try {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          setError("Permite accesul la cameră din setările dispozitivului pentru a fotografia tema.");
+          return;
+        }
+        const result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ["images"],
+          allowsEditing: true,
+          quality: 0.85,
+        });
+        if (result.canceled) return;
+        const asset = result.assets[0];
+        if (!asset) return;
+        const mimeType = asset.mimeType ?? "image/jpeg";
+        if (!ALLOWED_MIME_TYPES.includes(mimeType) || !mimeType.startsWith("image/")) {
+          setError("Alege o fotografie PNG sau JPG.");
+          return;
+        }
+        if (asset.fileSize && asset.fileSize > MAX_FILE_SIZE) {
+          setError("Fotografia depășește 10 MB. Alege una mai mică.");
+          return;
+        }
+        onChange({
+          name: asset.fileName ?? "fotografie-tema.jpg",
+          uri: asset.uri,
+          mimeType,
+          size: asset.fileSize,
+          status: "selected",
+        });
+      } catch {
+        setError("Camera nu a putut fi pornită. Poți alege o fotografie existentă.");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+    if (typeof document === "undefined") return;
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.setAttribute("capture", "environment");
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      if (!ALLOWED_MIME_TYPES.includes(file.type) || !file.type.startsWith("image/")) {
+        setError("Alege o fotografie PNG sau JPG.");
+        return;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        setError("Fotografia depășește 10 MB. Alege una mai mică.");
+        return;
+      }
+      onChange({
+        name: file.name || "fotografie-tema.jpg",
+        uri: URL.createObjectURL(file),
+        mimeType: file.type,
+        size: file.size,
+        status: "selected",
+      });
+    };
+    input.click();
+  }
   return (
     <View
       style={[
@@ -180,13 +256,19 @@ export function UploadCard({
           <MaterialIcons name="close" size={21} color={colors.muted} />
         </Pressable>
       ) : (
-        <Pressable
-          accessibilityRole="button"
-          onPress={pickFile}
-          style={[styles.attachButton, { backgroundColor: colors.primary }]}
-        >
-          <Text style={styles.attachText}>Alege</Text>
-        </Pressable>
+        <View style={styles.uploadActions}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Fotografiază tema" onPress={capturePhoto} style={[styles.attachButton, { backgroundColor: colors.success }]}>
+            <MaterialIcons name="photo-camera" size={16} color="#FFFFFF" />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Alege poza sau fișierul temei"
+            onPress={pickFile}
+            style={[styles.attachButton, { backgroundColor: colors.primary }]}
+          >
+            <Text style={styles.attachText}>Alege</Text>
+          </Pressable>
+        </View>
       )}
     </View>
   );
@@ -210,6 +292,7 @@ const styles = StyleSheet.create({
   },
   messageMeta: { flexDirection: "row", alignItems: "center", gap: 8 },
   messageAuthor: { fontSize: 12, fontWeight: "800" },
+  analysisMeta: { fontSize: 10, lineHeight: 14, textTransform: "capitalize" },
   messageText: { fontSize: 14, lineHeight: 21 },
   messageHeading: { fontWeight: "800", marginTop: 2 },
   messageBullet: { paddingLeft: 4 },
@@ -241,5 +324,6 @@ const styles = StyleSheet.create({
   uploadHint: { fontSize: 11, lineHeight: 15 },
   uploadError: { fontSize: 11, lineHeight: 15, marginTop: 2 },
   attachButton: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 11 },
+  uploadActions: { flexDirection: "row", alignItems: "center", gap: 6 },
   attachText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
 });
