@@ -16,74 +16,111 @@ const escapeXml = (value: string) => value
   .replace(/"/g, "&quot;")
   .replace(/'/g, "&apos;");
 
-function trianglePositions(diagram: GeometryDiagram): Point[] {
-  const points = diagram.points;
-  const equalSides = diagram.relations.filter((relation) => relation.type === "equal_length");
-  if (equalSides.length >= 3) return [{ x: 160, y: 38 }, { x: 57, y: 174 }, { x: 263, y: 174 }];
-  const equalPair = equalSides[0] && equalSides[1]
-    ? [equalSides[0].firstSegment, equalSides[0].secondSegment]
-    : equalSides[0] ? [equalSides[0].firstSegment, equalSides[0].secondSegment] : undefined;
-  if (equalPair) {
-    const side1 = diagram.segments.find((segment) => segment.id === equalPair[0]);
-    const side2 = diagram.segments.find((segment) => segment.id === equalPair[1]);
-    const shared = side1 && side2
-      ? [side1.from, side1.to].find((id) => id === side2.from || id === side2.to)
-      : undefined;
-    if (shared) {
-      const base = points.map((point) => point.id).filter((id) => id !== shared);
-      const positions = new Map<string, Point>([
-        [shared, { x: 160, y: 38 }],
-        [base[0], { x: 57, y: 174 }],
-        [base[1], { x: 263, y: 174 }],
-      ]);
-      return points.map((point) => positions.get(point.id) ?? { x: 160, y: 105 });
-    }
+function polygonOrder(diagram: GeometryDiagram): string[] {
+  const ids = diagram.points.map((point) => point.id);
+  const adjacency = new Map(ids.map((id) => [id, [] as string[]]));
+  for (const segment of diagram.segments) {
+    if (segment.lineType !== "segment" || !adjacency.has(segment.from) || !adjacency.has(segment.to)) continue;
+    adjacency.get(segment.from)!.push(segment.to);
+    adjacency.get(segment.to)!.push(segment.from);
   }
-  return [{ x: 58, y: 166 }, { x: 160, y: 38 }, { x: 262, y: 166 }];
+  if (ids.length >= 3 && [...adjacency.values()].every((neighbors) => neighbors.length === 2)) {
+    const order = [ids[0]];
+    let previous: string | undefined;
+    while (order.length < ids.length) {
+      const current = order[order.length - 1];
+      const next = adjacency.get(current)!.find((neighbor) => neighbor !== previous);
+      if (!next || next === order[0] || order.includes(next)) break;
+      order.push(next);
+      previous = current;
+    }
+    if (order.length === ids.length && adjacency.get(order[order.length - 1])!.includes(order[0])) return order;
+  }
+  return ids;
+}
+
+function trianglePositions(diagram: GeometryDiagram, order: string[]): Map<string, Point> {
+  const equalRelations = diagram.relations.filter((relation) => relation.type === "equal_length");
+  const equalSegments = new Set(equalRelations.flatMap((relation) => [relation.firstSegment, relation.secondSegment]));
+  const allSidesEqual = diagram.segments.filter((segment) => segment.lineType === "segment").length === 3
+    && diagram.segments.filter((segment) => equalSegments.has(segment.id)).length === 3;
+  if (allSidesEqual) {
+    return new Map([[order[0], { x: 160, y: 38 }], [order[1], { x: 57, y: 174 }], [order[2], { x: 263, y: 174 }]]);
+  }
+
+  const rightAngle = diagram.angles.find((angle) => angle.marker === "right");
+  if (rightAngle) {
+    const sidePoints = [rightAngle.ray1, rightAngle.ray2];
+    return new Map([
+      [rightAngle.vertex, { x: 88, y: 151 }],
+      [sidePoints[0], { x: 88, y: 56 }],
+      [sidePoints[1], { x: 183, y: 151 }],
+    ]);
+  }
+
+  const equality = equalRelations[0];
+  const first = diagram.segments.find((segment) => segment.id === equality?.firstSegment);
+  const second = diagram.segments.find((segment) => segment.id === equality?.secondSegment);
+  const shared = first && second
+    ? [first.from, first.to].find((id) => id === second.from || id === second.to)
+    : undefined;
+  if (shared) {
+    const base = order.filter((id) => id !== shared);
+    return new Map([[shared, { x: 160, y: 38 }], [base[0], { x: 57, y: 174 }], [base[1], { x: 263, y: 174 }]]);
+  }
+  return new Map([[order[0], { x: 160, y: 38 }], [order[1], { x: 57, y: 174 }], [order[2], { x: 263, y: 174 }]]);
 }
 
 export function layoutGeometryPoints(diagram: GeometryDiagram): PositionedPoint[] {
-  const ids = diagram.points.map((point) => point.id);
-  let positions: Point[];
+  const order = polygonOrder(diagram);
+  const positions = new Map<string, Point>();
   if (diagram.figure === "triangle") {
-    positions = trianglePositions(diagram);
+    for (const [id, point] of trianglePositions(diagram, order)) positions.set(id, point);
   } else if (diagram.figure === "rectangle" || diagram.figure === "square") {
     const halfWidth = diagram.figure === "square" ? 62 : 98;
     const halfHeight = diagram.figure === "square" ? 62 : 55;
-    positions = [
-      { x: 160 - halfWidth, y: 105 - halfHeight },
-      { x: 160 + halfWidth, y: 105 - halfHeight },
-      { x: 160 + halfWidth, y: 105 + halfHeight },
-      { x: 160 - halfWidth, y: 105 + halfHeight },
-    ];
+    [order[0], order[1], order[2], order[3]].forEach((id, index) => {
+      positions.set(id, [
+        { x: 160 - halfWidth, y: 105 - halfHeight },
+        { x: 160 + halfWidth, y: 105 - halfHeight },
+        { x: 160 + halfWidth, y: 105 + halfHeight },
+        { x: 160 - halfWidth, y: 105 + halfHeight },
+      ][index]);
+    });
   } else if (diagram.figure === "intersecting_lines") {
     const lines = diagram.segments.filter((segment) => segment.lineType === "line").slice(0, 2);
     const perpendicular = diagram.relations.some((relation) => relation.type === "perpendicular"
       && lines.every((line) => [relation.firstSegment, relation.secondSegment].includes(line.id)));
-    const fixed = new Map<string, Point>();
-    if (lines[0]) {
-      fixed.set(lines[0].from, perpendicular ? { x: 52, y: 105 } : { x: 55, y: 48 });
-      fixed.set(lines[0].to, perpendicular ? { x: 268, y: 105 } : { x: 265, y: 162 });
-    }
-    if (lines[1]) {
-      fixed.set(lines[1].from, perpendicular ? { x: 160, y: 35 } : { x: 55, y: 162 });
-      fixed.set(lines[1].to, perpendicular ? { x: 160, y: 175 } : { x: 265, y: 48 });
-    }
-    positions = ids.map((id) => fixed.get(id) ?? { x: 160, y: 105 });
+    const firstAngle = -Math.PI / 6;
+    const directions = [firstAngle, perpendicular ? firstAngle + Math.PI / 2 : firstAngle + Math.PI / 3];
+    lines.forEach((line, index) => {
+      const angle = directions[index];
+      const dx = Math.cos(angle) * 112;
+      const dy = Math.sin(angle) * 112;
+      positions.set(line.from, { x: 160 - dx, y: 105 - dy });
+      positions.set(line.to, { x: 160 + dx, y: 105 + dy });
+    });
+    const unused = diagram.points.filter((point) => !positions.has(point.id));
+    const center = unused.find((point) => point.label.toUpperCase() === "O" || point.id.toUpperCase() === "O") ?? unused[0];
+    if (center) positions.set(center.id, { x: 160, y: 105 });
+    unused.filter((point) => point.id !== center?.id).forEach((point, index) => {
+      const angle = -Math.PI / 2 + (index * 2 * Math.PI) / Math.max(unused.length - 1, 1);
+      positions.set(point.id, { x: 160 + Math.cos(angle) * 25, y: 105 + Math.sin(angle) * 25 });
+    });
   } else if (diagram.figure === "circle") {
-    positions = diagram.points.map((point, index) => {
-      const circle = diagram.circles.find((item) => item.center === point.id);
-      if (circle) return { x: 160, y: 105 };
-      const angle = -Math.PI / 2 + (index * 2 * Math.PI) / Math.max(1, diagram.points.length - 1);
-      return { x: 160 + Math.cos(angle) * 55, y: 105 + Math.sin(angle) * 55 };
+    const perimeter = diagram.points.filter((point) => !diagram.circles.some((circle) => circle.center === point.id));
+    diagram.circles.forEach((circle) => positions.set(circle.center, { x: 160, y: 105 }));
+    perimeter.forEach((point, index) => {
+      const angle = -Math.PI / 2 + (index * 2 * Math.PI) / Math.max(perimeter.length, 1);
+      positions.set(point.id, { x: 160 + Math.cos(angle) * 55, y: 105 + Math.sin(angle) * 55 });
     });
   } else {
-    positions = ids.map((_, index) => {
-      const angle = -Math.PI / 2 + (index * 2 * Math.PI) / Math.max(ids.length, 3);
-      return { x: 160 + Math.cos(angle) * 95, y: 105 + Math.sin(angle) * 66 };
+    order.forEach((id, index) => {
+      const angle = -Math.PI / 2 + (index * 2 * Math.PI) / Math.max(order.length, 3);
+      positions.set(id, { x: 160 + Math.cos(angle) * 95, y: 105 + Math.sin(angle) * 66 });
     });
   }
-  return diagram.points.map((point, index) => ({ ...positions[index], ...point }));
+  return diagram.points.map((point) => ({ ...(positions.get(point.id) ?? { x: 160, y: 105 }), ...point }));
 }
 
 function endpoint(pointMap: Map<string, PositionedPoint>, id: string): Point {
@@ -193,7 +230,23 @@ function relationSvg(diagram: GeometryDiagram, pointMap: Map<string, PositionedP
     const crossing = intersect(a, b, c, d);
     if (!crossing) return "";
     const size = 10;
-    return `<path d="M ${crossing.x - size} ${crossing.y} L ${crossing.x - size} ${crossing.y - size} L ${crossing.x} ${crossing.y - size}" fill="none" stroke="${ACCENT}" stroke-width="1.8"/>`;
+    const firstLength = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const secondLength = Math.hypot(d.x - c.x, d.y - c.y) || 1;
+    const firstDirection = { x: (b.x - a.x) / firstLength, y: (b.y - a.y) / firstLength };
+    const secondDirection = { x: (d.x - c.x) / secondLength, y: (d.y - c.y) / secondLength };
+    const firstCorner = {
+      x: crossing.x + firstDirection.x * size,
+      y: crossing.y + firstDirection.y * size,
+    };
+    const oppositeCorner = {
+      x: firstCorner.x + secondDirection.x * size,
+      y: firstCorner.y + secondDirection.y * size,
+    };
+    const secondCorner = {
+      x: crossing.x + secondDirection.x * size,
+      y: crossing.y + secondDirection.y * size,
+    };
+    return `<path d="M ${firstCorner.x} ${firstCorner.y} L ${oppositeCorner.x} ${oppositeCorner.y} L ${secondCorner.x} ${secondCorner.y}" fill="none" stroke="${ACCENT}" stroke-width="1.8"/>`;
   }).join("");
 }
 

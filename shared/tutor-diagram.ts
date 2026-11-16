@@ -121,6 +121,15 @@ function connectedComponentCount(adjacency: Map<string, string[]>): number {
   return count;
 }
 
+function polygonBoundaryExists(pointIds: string[], segments: GeometryDiagram["segments"]): boolean {
+  if (pointIds.length < 3) return false;
+  return pointIds.every((point, index) => {
+    const next = pointIds[(index + 1) % pointIds.length];
+    return segments.some((segment) => segment.lineType === "segment"
+      && ((segment.from === point && segment.to === next) || (segment.from === next && segment.to === point)));
+  });
+}
+
 export function validateTutorDiagram(diagram: TutorDiagram): string | null {
   if (diagram.category === "chemistry") {
     const atoms = new Map(diagram.atoms.map((atom) => [atom.id, atom]));
@@ -160,10 +169,14 @@ export function validateTutorDiagram(diagram: TutorDiagram): string | null {
   if (points.size !== diagram.points.length || segments.size !== diagram.segments.length || circles.size !== diagram.circles.length) {
     return "Point, segment, and circle IDs must be unique.";
   }
+  const seenEdges = new Set<string>();
   for (const segment of diagram.segments) {
     if (!points.has(segment.from) || !points.has(segment.to) || segment.from === segment.to) {
       return "Every segment must connect two different declared points.";
     }
+    const edge = [segment.from, segment.to].sort().join(":");
+    if (seenEdges.has(edge)) return "A pair of points cannot have duplicate segments.";
+    seenEdges.add(edge);
   }
   for (const angle of diagram.angles) {
     if (!points.has(angle.vertex) || !points.has(angle.ray1) || !points.has(angle.ray2)
@@ -185,18 +198,18 @@ export function validateTutorDiagram(diagram: TutorDiagram): string | null {
     if (!points.has(circle.center)) return "Each circle center must reference a declared point.";
   }
 
-  const edgeCount = diagram.segments.length;
-  if (diagram.figure === "triangle" && (points.size !== 3 || edgeCount < 3)) {
-    return "A triangle needs three points and its three sides.";
+  if (diagram.figure === "triangle" && (points.size !== 3 || !polygonBoundaryExists([...points.keys()], diagram.segments))) {
+    return "A triangle needs three points connected by its three sides.";
   }
-  if ((diagram.figure === "square" || diagram.figure === "rectangle") && (points.size !== 4 || edgeCount < 4)) {
-    return "A quadrilateral needs four points and four sides.";
+  if ((diagram.figure === "square" || diagram.figure === "rectangle")
+    && (points.size !== 4 || !polygonBoundaryExists([...points.keys()], diagram.segments))) {
+    return "A quadrilateral needs four points connected by its four sides.";
   }
   if (diagram.figure === "intersecting_lines"
     && diagram.segments.filter((segment) => segment.lineType === "line").length < 2) {
     return "Intersecting-lines diagrams need two declared lines.";
   }
   if (diagram.figure === "circle" && circles.size === 0) return "A circle diagram needs a circle element.";
-  if (edgeCount === 0 && circles.size === 0) return "A geometry diagram needs a segment or a circle.";
+  if (diagram.segments.length === 0 && circles.size === 0) return "A geometry diagram needs a segment or a circle.";
   return null;
 }

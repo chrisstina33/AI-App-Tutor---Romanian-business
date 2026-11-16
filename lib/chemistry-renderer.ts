@@ -43,9 +43,12 @@ function branchAngle(occupied: number[]): number {
   return candidates.map((angle) => ({
     angle,
     score: occupied.length
-      ? Math.min(...occupied.map((used) => Math.abs(angleDistance(angle, used) - (2 * Math.PI) / 3)))
+      ? occupied.reduce((total, used) => {
+        const deviation = angleDistance(angle, used) - (2 * Math.PI) / 3;
+        return total + deviation * deviation;
+      }, 0)
       : 0,
-  })).sort((a, b) => b.score - a.score || a.angle - b.angle)[0].angle;
+  })).sort((a, b) => a.score - b.score || a.angle - b.angle)[0].angle;
 }
 
 export function layoutMolecule(diagram: ChemistryDiagram): Map<string, Point> {
@@ -57,19 +60,20 @@ export function layoutMolecule(diagram: ChemistryDiagram): Map<string, Point> {
   if (diagram.bonds.length === diagram.atoms.length && diagram.atoms.length > 2) {
     const cycle = [diagram.atoms[0].id];
     let previous: string | undefined;
-    let current = cycle[0];
     while (cycle.length < diagram.atoms.length) {
-      const next = adjacency.get(current)!.find((id) => id !== previous && id !== cycle[0]);
-      if (!next) break;
+      const current = cycle[cycle.length - 1];
+      const next = adjacency.get(current)!.find((id) => id !== previous);
+      if (!next || next === cycle[0] || cycle.includes(next)) break;
       cycle.push(next);
       previous = current;
-      current = next;
     }
     const radius = Math.min(68, 16 * diagram.atoms.length);
-    return new Map(cycle.map((id, index) => {
-      const angle = -Math.PI / 2 + (index * 2 * Math.PI) / diagram.atoms.length;
-      return [id, { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius }];
-    }));
+    if (cycle.length === diagram.atoms.length && adjacency.get(cycle[cycle.length - 1])!.includes(cycle[0])) {
+      return new Map(cycle.map((id, index) => {
+        const angle = -Math.PI / 2 + (index * 2 * Math.PI) / diagram.atoms.length;
+        return [id, { x: 160 + Math.cos(angle) * radius, y: 91 + Math.sin(angle) * radius }];
+      }));
+    }
   }
 
   const path = treeDiameter(adjacency);
@@ -81,7 +85,7 @@ export function layoutMolecule(diagram: ChemistryDiagram): Map<string, Point> {
       return;
     }
     const previous = positions.get(path[index - 1])!;
-    const angle = index % 2 === 1 ? -Math.PI / 3 : Math.PI / 3;
+    const angle = index % 2 === 1 ? -Math.PI / 6 : Math.PI / 6;
     positions.set(id, { x: previous.x + Math.cos(angle) * bondLength, y: previous.y + Math.sin(angle) * bondLength });
   });
   const pathIds = new Set(path);

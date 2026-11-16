@@ -17,7 +17,37 @@ const tutorResponseSchema = z.object({
   analysis: tutorAnalysisSchema,
   diagram: tutorDiagramSchema.nullable(),
 }).strict();
-const tutorResponseJsonSchema = z.toJSONSchema(tutorResponseSchema, { target: "openai" });
+export const tutorChatInputSchema = z.object({
+  subject: z.string().min(1).max(80),
+  mode: z.enum(tutorModes),
+  question: z.string().max(4000),
+  learnerLevel: z.enum(["La început", "Îmi formez încrederea", "Pregătit pentru examen"]).optional(),
+  explanationStyle: z.enum(["Scurt și clar", "Detaliat și vizual", "Întrebări socratice"]).optional(),
+  messages: z.array(z.discriminatedUnion("role", [
+    z.object({ role: z.literal("user"), text: z.string().max(4000) }),
+    z.object({ role: z.literal("assistant"), text: z.string().max(8000) }),
+  ])).max(20),
+  attachment: z.object({
+    name: z.string().max(180),
+    mimeType: z.enum(["image/png", "image/jpeg", "application/pdf", "text/plain"]),
+    base64: z.string().max(15_000_000),
+  }).optional(),
+}).refine((input) => Boolean(input.question.trim()) || Boolean(input.attachment), {
+  message: "Scrie o întrebare sau atașează tema.",
+});
+
+function normalizeStructuredOutputSchema(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(normalizeStructuredOutputSchema);
+  if (!schema || typeof schema !== "object") return schema;
+  return Object.fromEntries(Object.entries(schema).map(([key, value]) => [
+    key === "oneOf" ? "anyOf" : key,
+    normalizeStructuredOutputSchema(value),
+  ]));
+}
+
+export const tutorResponseJsonSchema = normalizeStructuredOutputSchema(
+  z.toJSONSchema(tutorResponseSchema, { target: "openai" }),
+) as Record<string, unknown>;
 const systemPrompt = `Ești Elunariq, un tutor în limba română pentru elevi de liceu. Răspunde concret la întrebarea elevului și adaptează explicația la materia, enunț și modul cerut. Nu folosi răspunsuri-șablon și nu introduce ecuații sau formule decât dacă sunt relevante pentru problema elevului; nu folosi exemple generice precum a+b=c fără motiv.
 
 Respectă modul cerut: în guided oferă un singur pas și o întrebare, fără soluția completă; în hint oferă un indiciu; în concept explică ideea cerută; în example oferă un exemplu asemănător; în check verifică pasul trimis; în practice creează un exercițiu; în summary recapitulează și propune un mini-quiz; în direct răspunde complet și clar.
@@ -26,7 +56,7 @@ Folosește formule LaTeX doar când ajută la explicarea unei probleme matematic
 
 Returnează numai obiectul JSON cerut de schema structurată. Completează răspunsul pedagogic în text, analiza materiei în analysis și diagrama interpretată în diagram (sau null dacă nu este utilă ori nu poate fi dedusă cu încredere). Nu produce SVG, HTML, coordonate de desen pentru geometrie sau atomi de decor.
 
-Pentru categoria geometry, identifică figura, punctele/etichetele, segmentele, unghiurile, relațiile de paralelism/perpendicularitate/egalitate, cercurile și enunțate constrângerile exacte. Păstrează fiecare constrângere lizibilă în constraints și codifică unghiuri/lungimi cunoscute și în etichetele elementelor relevante. Referințele trebuie să indice numai ID-uri declarate. Pentru triunghi folosește punctele în ordinea conturului; pentru pătrat/dreptunghi la fel. Alege intersecting_lines când sunt două drepte care se intersectează. Setează schematic=true când măsurile ori unghiurile exacte lipsesc; nu inventa valori și nu pretinde că desenul este la scară. Fă unghiul de la C explicit prin vertex, ray1 și ray2.
+Pentru categoria geometry, identifică figura, punctele/etichetele, segmentele, unghiurile, relațiile de paralelism/perpendicularitate/egalitate, cercurile și constrângerile exacte din enunț. Păstrează fiecare constrângere lizibilă în constraints și codifică unghiuri/lungimi cunoscute și în etichetele elementelor relevante. Referințele trebuie să indice numai ID-uri declarate. Pentru triunghi folosește punctele și laturile în ordinea ciclului conturului; pentru pătrat/dreptunghi la fel. Alege intersecting_lines când sunt două drepte care se intersectează. Marchează un unghi ca drept numai când enunțul spune explicit că măsoară 90° ori că este perpendicular; nu deduce egalități sau perpendicularități doar din tipul figurii. Setează schematic=true când măsurile ori unghiurile exacte lipsesc; nu inventa valori și nu pretinde că desenul este la scară. Fă unghiul de la C explicit prin vertex, ray1 și ray2.
 
 Pentru categoria chemistry, emite graful molecular și proprietățile/constrângerile exacte în constraints: fiecare atom o singură dată, fiecare legătură cu ordinul corect, inclusiv ramificațiile și substituenții. Carbonul și hidrogenul implicit trebuie să respecte valența; hidrogenii impliciți nu se trimit ca atomi separați. Verifică numărul de atomi și conectivitatea structurii față de numele/enunțul moleculei. Dacă identificarea moleculei ori conectivitatea este ambiguă, setează diagram=null; nu ghici. Rendererul acceptă numai legături covalente neutre cu C, N, O, F, Cl, Br și I.
 
@@ -75,7 +105,7 @@ export const assistantRouter = router({
     if ("error" in result) throw new Error(result.error);
     return { text: result.text, duration: result.duration, language: result.language };
   }),
-  chat: publicProcedure.input(z.object({ subject: z.string().min(1).max(80), mode: z.enum(tutorModes), question: z.string().max(4000), learnerLevel: z.enum(["La început", "Îmi formez încrederea", "Pregătit pentru examen"]).optional(), explanationStyle: z.enum(["Scurt și clar", "Detaliat și vizual", "Întrebări socratice"]).optional(), messages: z.array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().max(4000) })).max(20), attachment: z.object({ name: z.string().max(180), mimeType: z.enum(["image/png", "image/jpeg", "application/pdf", "text/plain"]), base64: z.string().max(15_000_000) }).optional() }).refine((input) => Boolean(input.question.trim()) || Boolean(input.attachment), { message: "Scrie o întrebare sau atașează tema." })).mutation(async ({ input }) => {
+  chat: publicProcedure.input(tutorChatInputSchema).mutation(async ({ input }) => {
     const selected = modelFor(input);
     const history: Message[] = input.messages.map((message) => ({ role: message.role, content: message.text }));
     let userContent: Message["content"] = `Materia: ${input.subject}\nMod: ${input.mode}\nÎntrebarea elevului: ${input.question || "Analizează enunțul din fișierul atașat și ajută-mă cu primul pas."}`;

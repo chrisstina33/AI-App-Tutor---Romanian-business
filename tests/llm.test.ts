@@ -65,4 +65,28 @@ describe("OpenRouter tutor provider", () => {
       }),
     );
   });
+
+  it("returns provider validation errors immediately with their diagnostic message", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "openrouter-test-key");
+    vi.stubEnv("OPENROUTER_API_KEY_GPT5_MINI", "");
+    const fetchMock = vi.fn(async () => new Response(
+      JSON.stringify({
+        error: {
+          code: "invalid_json_schema",
+          type: "invalid_request_error",
+          message: "Unsupported schema keyword oneOf.",
+        },
+      }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { invokeLLM } = await import("../server/_core/llm");
+
+    await expect(invokeLLM({
+      model: "gpt-5-mini",
+      messages: [{ role: "user", content: "Desenează un triunghi." }],
+    })).rejects.toThrow("Unsupported schema keyword oneOf.");
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
 });

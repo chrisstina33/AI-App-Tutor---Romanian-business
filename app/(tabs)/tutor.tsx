@@ -94,7 +94,11 @@ export default function TutorScreen() {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder);
   useEffect(() => {
-    loadPendingUpload().then(setUpload);
+    if (Platform.OS === "web") {
+      void clearPendingUpload();
+      return;
+    }
+    void loadPendingUpload().then(setUpload);
   }, [params.autoUpload]);
   const history = useMemo(
     () => messages.map(({ role, text }) => ({ role, text })),
@@ -199,7 +203,7 @@ export default function TutorScreen() {
       setNotice(
         networkFailure
           ? `Nu mă pot conecta la serverul AI (${getApiBaseUrl()}). Verifică internetul și dacă serviciul Render este pornit, apoi încearcă din nou.`
-          : `Serverul AI a răspuns cu o eroare: ${detail}. Verifică cheia și modelele OpenRouter configurate în Render.`,
+          : `Cererea nu a putut fi procesată: ${detail}.`,
       );
     } finally {
       setPending(false);
@@ -503,9 +507,9 @@ export default function TutorScreen() {
               compact
               onChange={async (value) => {
                 setUpload(value);
-                if (value) {
+                if (value && Platform.OS !== "web") {
                   await savePendingUpload(value);
-                } else {
+                } else if (!value) {
                   await clearPendingUpload();
                 }
               }}

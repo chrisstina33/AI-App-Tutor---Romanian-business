@@ -3,7 +3,7 @@ import { chemistryDiagramSvg, layoutMolecule } from "../lib/chemistry-renderer";
 import { diagramSvg } from "../lib/diagrams";
 import { geometryDiagramSvg, layoutGeometryPoints } from "../lib/geometry-renderer";
 import { validateTutorDiagram, type ChemistryDiagram, type GeometryDiagram } from "../shared/tutor-diagram";
-import { parseTutorResponse } from "../server/ai";
+import { parseTutorResponse, tutorResponseJsonSchema } from "../server/ai";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -39,7 +39,8 @@ describe("semantic geometry diagrams", () => {
   it("lays out the two equal sides as equal lengths", () => {
     const isosceles: GeometryDiagram = {
       ...triangle,
-      relations: [{ type: "equal_length", firstSegment: "AB", secondSegment: "AC" }],
+      angles: [],
+      relations: [{ type: "equal_length", firstSegment: "AB", secondSegment: "CA" }],
     };
     const points = new Map(layoutGeometryPoints(isosceles).map((point) => [point.id, point]));
     const a = points.get("A")!;
@@ -47,6 +48,23 @@ describe("semantic geometry diagrams", () => {
     const c = points.get("C")!;
     expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeCloseTo(Math.hypot(a.x - c.x, a.y - c.y));
     expect((geometryDiagramSvg(isosceles).match(/stroke="#A85C43"/g) ?? []).length).toBe(2);
+  });
+
+  it("uses segment connectivity rather than point-array order and honors a right angle", () => {
+    const reordered: GeometryDiagram = { ...triangle, points: [triangle.points[2], triangle.points[0], triangle.points[1]] };
+    const positions = new Map(layoutGeometryPoints(reordered).map((point) => [point.id, point]));
+    expect(positions.get("A")!.x).not.toBe(positions.get("B")!.x);
+    expect(positions.get("A")!.y).toBe(positions.get("B")!.y);
+
+    const rightTriangle: GeometryDiagram = {
+      ...triangle,
+      angles: [{ vertex: "C", ray1: "A", ray2: "B", label: "", marker: "right" }],
+    };
+    const rightPositions = new Map(layoutGeometryPoints(rightTriangle).map((point) => [point.id, point]));
+    const c = rightPositions.get("C")!;
+    const a = rightPositions.get("A")!;
+    const b = rightPositions.get("B")!;
+    expect((a.x - c.x) * (b.x - c.x) + (a.y - c.y) * (b.y - c.y)).toBeCloseTo(0);
   });
 
   it("draws two intersecting lines and relation markers for parallel and perpendicular segments", () => {
@@ -66,7 +84,14 @@ describe("semantic geometry diagrams", () => {
       circles: [],
     };
     expect(validateTutorDiagram(intersecting)).toBeNull();
-    expect(geometryDiagramSvg(intersecting)).toContain('cx="160" cy="105"');
+    const intersectingSvg = geometryDiagramSvg(intersecting);
+    expect(intersectingSvg).toContain('cx="160" cy="105"');
+    expect(intersectingSvg).toContain('L 173.6602540378444 108.66025403784441');
+    const linePoints = new Map(layoutGeometryPoints(intersecting).map((point) => [point.id, point]));
+    const firstLine = [linePoints.get("B")!, linePoints.get("A")!];
+    const secondLine = [linePoints.get("D")!, linePoints.get("C")!];
+    expect((firstLine[0].x - firstLine[1].x) * (secondLine[0].x - secondLine[1].x)
+      + (firstLine[0].y - firstLine[1].y) * (secondLine[0].y - secondLine[1].y)).toBeCloseTo(0);
 
     const rectangle: GeometryDiagram = {
       ...triangle,
@@ -88,6 +113,52 @@ describe("semantic geometry diagrams", () => {
     const svg = diagramSvg(rectangle);
     expect(svg).toContain('viewBox="0 0 320 210"');
     expect((svg.match(/stroke="#A85C43"/g) ?? []).length).toBeGreaterThanOrEqual(5);
+    const rectanglePoints = new Map(layoutGeometryPoints(rectangle).map((point) => [point.id, point]));
+    const ab = [rectanglePoints.get("B")!, rectanglePoints.get("A")!];
+    const cd = [rectanglePoints.get("D")!, rectanglePoints.get("C")!];
+    expect(ab[0].y - ab[1].y).toBeCloseTo(cd[0].y - cd[1].y);
+    const bc = [rectanglePoints.get("C")!, rectanglePoints.get("B")!];
+    expect((ab[0].x - ab[1].x) * (bc[0].x - bc[1].x)
+      + (ab[0].y - ab[1].y) * (bc[0].y - bc[1].y)).toBeCloseTo(0);
+  });
+
+  it("rejects a quadrilateral whose segments do not form a closed boundary", () => {
+    const incomplete: GeometryDiagram = {
+      category: "geometry",
+      caption: "Patru puncte",
+      schematic: true,
+      constraints: [],
+      figure: "rectangle",
+      points: ["A", "B", "C", "D"].map((id) => ({ id, label: id })),
+      segments: [
+        { id: "AB", from: "A", to: "B", label: "", lineType: "segment" },
+        { id: "CD", from: "C", to: "D", label: "", lineType: "segment" },
+        { id: "AC", from: "A", to: "C", label: "", lineType: "segment" },
+      ],
+      angles: [],
+      relations: [],
+      circles: [],
+    };
+    expect(validateTutorDiagram(incomplete)).toContain("four sides");
+  });
+
+  it("renders a circle with a center point and circumference", () => {
+    const circle: GeometryDiagram = {
+      category: "geometry",
+      caption: "Cercul cu centrul O",
+      schematic: true,
+      constraints: [],
+      figure: "circle",
+      points: [{ id: "O", label: "O" }, { id: "A", label: "A" }],
+      segments: [{ id: "OA", from: "O", to: "A", label: "", lineType: "segment" }],
+      angles: [],
+      relations: [],
+      circles: [{ id: "c1", center: "O", label: "cerc" }],
+    };
+    const svg = geometryDiagramSvg(circle);
+    expect(validateTutorDiagram(circle)).toBeNull();
+    expect(svg).toContain('<circle cx="160" cy="105" r="55"');
+    expect(svg).toContain(">O</text>");
   });
 });
 
@@ -125,6 +196,41 @@ describe("molecular graph diagrams", () => {
     expect(positions.every(({ x, y }) => x > 20 && x < 300 && y > 20 && y < 160)).toBe(true);
   });
 
+  it("uses textbook bond angles for straight and branched carbon skeletons", () => {
+    const angleAt = (diagram: ChemistryDiagram, center: string, first: string, second: string) => {
+      const positions = layoutMolecule(diagram);
+      const origin = positions.get(center)!;
+      const a = positions.get(first)!;
+      const b = positions.get(second)!;
+      const ax = a.x - origin.x;
+      const ay = a.y - origin.y;
+      const bx = b.x - origin.x;
+      const by = b.y - origin.y;
+      return Math.acos((ax * bx + ay * by) / (Math.hypot(ax, ay) * Math.hypot(bx, by))) * (180 / Math.PI);
+    };
+
+    expect(angleAt(examples[0].diagram, "C2", "C1", "C3")).toBeCloseTo(120, 0);
+    const branched = examples[3].diagram;
+    for (const [first, second] of [["C1", "C3"], ["C1", "C4"], ["C3", "C4"]] as const) {
+      expect(angleAt(branched, "C2", first, second)).toBeCloseTo(120, 0);
+    }
+  });
+
+  it("lays out each atom in a simple ring", () => {
+    const ring: ChemistryDiagram = {
+      category: "chemistry",
+      caption: "Ciclopropan",
+      schematic: true,
+      constraints: [],
+      atoms: atoms(["C1", "C2", "C3"]),
+      bonds: [bond("C1", "C2"), bond("C2", "C3"), bond("C3", "C1")],
+    };
+    const positions = layoutMolecule(ring);
+    expect(positions.size).toBe(3);
+    expect(new Set([...positions.values()].map(({ x, y }) => `${x.toFixed(2)},${y.toFixed(2)}`)).size).toBe(3);
+    expect([...positions.values()].every(({ x, y }) => x > 20 && x < 300 && y > 20 && y < 160)).toBe(true);
+  });
+
   it("rejects over-valent and disconnected molecular graphs", () => {
     const invalidValence: ChemistryDiagram = {
       category: "chemistry",
@@ -147,6 +253,16 @@ describe("molecular graph diagrams", () => {
 });
 
 describe("structured tutor responses", () => {
+  it("converts Zod discriminated unions to the provider-supported anyOf keyword", () => {
+    const hasOneOf = (value: unknown): boolean => {
+      if (Array.isArray(value)) return value.some(hasOneOf);
+      if (!value || typeof value !== "object") return false;
+      return Object.entries(value).some(([key, child]) => key === "oneOf" || hasOneOf(child));
+    };
+    expect(hasOneOf(tutorResponseJsonSchema)).toBe(false);
+    expect(JSON.stringify(tutorResponseJsonSchema)).toContain('"anyOf"');
+  });
+
   it("reports malformed or incomplete JSON instead of treating it as prose", () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     expect(() => parseTutorResponse("not json")).toThrow(/răspuns structurat invalid/);

@@ -294,15 +294,16 @@ const computeBackoffDelay = (attempt: number, retryAfterMs?: number): number => 
   return Math.min(Math.max(jittered, retryAfterMs ?? 0), RETRY_MAX_DELAY_MS);
 };
 
-// Retries non-2xx responses and network errors with exponential backoff, then returns
-// the final Response so callers keep their existing error handling.
+// Retry only transient HTTP failures and network errors; other 4xx responses are
+// deterministic request errors and should be returned immediately.
 const fetchWithBackoff = async (url: string, init: FetchInit): Promise<Response> => {
   let lastError: unknown;
 
   for (let attempt = 0; attempt <= RETRY_MAX_RETRIES; attempt++) {
     try {
       const response = await fetch(url, init);
-      if (response.ok || attempt === RETRY_MAX_RETRIES) {
+      const retryableStatus = response.status === 408 || response.status === 429 || response.status >= 500;
+      if (response.ok || !retryableStatus || attempt === RETRY_MAX_RETRIES) {
         return response;
       }
 
@@ -418,12 +419,16 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     const errorText = await response.text();
     let errorCode = "unknown";
     let errorType = "unknown";
+    let errorMessage = "";
     try {
       const errorBody = JSON.parse(errorText) as {
-        error?: { code?: unknown; type?: unknown };
+        error?: { code?: unknown; type?: unknown; message?: unknown };
       };
       if (typeof errorBody.error?.code === "string") errorCode = errorBody.error.code;
       if (typeof errorBody.error?.type === "string") errorType = errorBody.error.type;
+      if (typeof errorBody.error?.message === "string") {
+        errorMessage = errorBody.error.message.replace(/[\r\n\t]+/g, " ").slice(0, 240);
+      }
     } catch {
       // The provider did not return a JSON error body.
     }
@@ -434,7 +439,9 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
       errorCode,
       errorType,
     });
-    throw new Error(`LLM invoke failed with status ${response.status} (${errorCode})`);
+    throw new Error(
+      `LLM invoke failed with status ${response.status} (${errorCode})${errorMessage ? `: ${errorMessage}` : ""}`,
+    );
   }
 
   return (await response.json()) as InvokeResult;
