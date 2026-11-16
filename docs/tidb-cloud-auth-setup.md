@@ -6,10 +6,14 @@ sessions, and learner progress require the `0002_auth_parent_accounts` migration
 1. Create a TiDB Cloud Serverless cluster and database. Create or select a
    database user with permissions to create and modify tables in that database.
 2. In the cluster's connection details, select the Node.js/MySQL connection
-   method and copy its connection URL. Keep the password private; URL-encode
-   special characters in the username or password if the URL requires it.
+   method. If Connect shows separate fields, use the matching
+   `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_USER`, and `DATABASE_PASSWORD`
+   values below. The application database name is `elunariq`; keep the built-in
+   `sys` database and do not use it for the application.
 3. Configure the **Render API service** environment:
-   - `DATABASE_URL`: the TiDB MySQL connection URL, including the database name.
+   - Either `DATABASE_URL` for a MySQL connection URL ending in `/elunariq`, or
+     all of `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_USER`,
+     `DATABASE_PASSWORD`, and `DATABASE_NAME=elunariq`.
    - `DATABASE_SSL`: `true` for TiDB Cloud's TLS connection.
    - `CORS_ALLOWED_ORIGINS`: the exact production Vercel origin, plus any
      development origins you use.
@@ -17,12 +21,15 @@ sessions, and learner progress require the `0002_auth_parent_accounts` migration
    the cluster:
 
    ```sh
-   DATABASE_URL='mysql://USER:PASSWORD@HOST:4000/DATABASE' \
+   DATABASE_HOST='YOUR-HOST' DATABASE_PORT='4000' \
+   DATABASE_USER='YOUR-USER' DATABASE_PASSWORD='YOUR-PASSWORD' \
+   DATABASE_NAME='elunariq' \
    DATABASE_SSL=true pnpm db:migrate
    ```
 
-   Prefer running this command locally with the TiDB connection URL supplied
-   through your shell or a private local environment file. Do not commit the URL.
+   Prefer running this command locally with these settings in a private `.env`
+   file (which is gitignored), or configured in the shell. Do not commit
+   connection details.
    It is also possible to run it from a one-off Render shell after setting the
    same environment variables.
 5. Redeploy or restart the Render API after setting its variables. Set

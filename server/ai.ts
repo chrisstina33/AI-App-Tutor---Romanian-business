@@ -56,7 +56,7 @@ Folosește formule LaTeX doar când ajută la explicarea unei probleme matematic
 
 Returnează numai obiectul JSON cerut de schema structurată. Completează răspunsul pedagogic în text, analiza materiei în analysis și diagrama interpretată în diagram (sau null dacă nu este utilă ori nu poate fi dedusă cu încredere). Nu produce SVG, HTML, coordonate de desen pentru geometrie sau atomi de decor.
 
-Pentru categoria geometry, identifică figura, punctele/etichetele, segmentele, unghiurile, relațiile de paralelism/perpendicularitate/egalitate, cercurile și constrângerile exacte din enunț. Păstrează fiecare constrângere lizibilă în constraints și codifică unghiuri/lungimi cunoscute și în etichetele elementelor relevante. Referințele trebuie să indice numai ID-uri declarate. Pentru triunghi folosește punctele și laturile în ordinea ciclului conturului; pentru pătrat/dreptunghi la fel. Alege intersecting_lines când sunt două drepte care se intersectează. Marchează un unghi ca drept numai când enunțul spune explicit că măsoară 90° ori că este perpendicular; nu deduce egalități sau perpendicularități doar din tipul figurii. Setează schematic=true când măsurile ori unghiurile exacte lipsesc; nu inventa valori și nu pretinde că desenul este la scară. Fă unghiul de la C explicit prin vertex, ray1 și ray2.
+Pentru categoria geometry, identifică figura, punctele/etichetele, segmentele, unghiurile, relațiile de paralelism/perpendicularitate/egalitate și cercurile cerute. Desenul trebuie să conțină numai figura și informațiile geometrice relevante pentru a o reprezenta; nu include calcule, formule de rezolvare, răspunsuri sau detalii fără legătură cu desenul. În câmpul constraints păstrează doar datele geometrice explicite din enunț care nu sunt deja reprezentate de etichete sau marcaje; pentru o figură cerută fără date suplimentare, lasă lista goală. Codifică lungimile și unghiurile cunoscute în etichetele elementelor relevante. Referințele trebuie să indice numai ID-uri declarate. Pentru paralelogram folosește figura parallelogram, exact patru puncte în ordinea conturului și cele patru laturi, fără diagonale dacă nu sunt cerute. Pentru triunghi, pătrat și dreptunghi folosește punctele și laturile în ordinea ciclului conturului. Alege intersecting_lines când sunt două drepte care se intersectează. Marchează un unghi ca drept numai când enunțul spune explicit că măsoară 90° ori că este perpendicular; nu deduce egalități sau perpendicularități doar din tipul figurii. Setează schematic=true când măsurile ori unghiurile exacte lipsesc; nu inventa valori și nu pretinde că desenul este la scară. Fă unghiul de la C explicit prin vertex, ray1 și ray2.
 
 Pentru categoria chemistry, emite graful molecular și proprietățile/constrângerile exacte în constraints: fiecare atom o singură dată, fiecare legătură cu ordinul corect, inclusiv ramificațiile și substituenții. Carbonul și hidrogenul implicit trebuie să respecte valența; hidrogenii impliciți nu se trimit ca atomi separați. Verifică numărul de atomi și conectivitatea structurii față de numele/enunțul moleculei. Dacă identificarea moleculei ori conectivitatea este ambiguă, setează diagram=null; nu ghici. Rendererul acceptă numai legături covalente neutre cu C, N, O, F, Cl, Br și I.
 
@@ -64,10 +64,63 @@ Folosește categoria schematic numai pentru explicații vizuale non-geometrice (
 
 În diagramă, include toate câmpurile cerute de schemă. Câmpurile textuale label fără etichetă trebuie să fie șirul gol. În analysis, evaluează exercițiul curent și nu deduce materia doar din selector. Pentru date insuficiente folosește necunoscut și confidence sub 0.8. Folosește mastery="demonstrated" numai în modul check, după o încercare reală și corectă cu raționament; în celelalte moduri folosește unknown. Nu inventa clasa exactă.`;
 
-function modelFor(input: { mode: (typeof tutorModes)[number]; question: string }) {
-  if (input.mode === "direct" && input.question.length > 1800) return { model: "gpt-5.5", tier: "premium" as const };
-  if (input.mode === "direct" || input.question.length > 900) return { model: "gpt-5", tier: "extended" as const };
-  return { model: "gpt-5-mini", tier: "routine" as const };
+const geometryTerms = /paralelogram\w*|romb\w*|patrulater\w*|triunghi\w*|dreptunghi\w*|pătrat\w*|patrat\w*|cerc\w*|unghi\w*|latur\w*|segment\w*|diagonal\w*|perimetru\w*|arie\w*|perpendicular\w*|paralel\w*|bisectoare\w*|mediatoare\w*|median\w*|vector\w*|parallelogram\w*|quadrilateral\w*|triangle\w*|rectangle\w*|square\w*|circle\w*|angle\w*|perimeter\w*|area\w*|perpendicular\w*|parallel\w*|vector\w*|geometr\w*/iu;
+const physicsTerms = /mecanic\w*|termodinamic\w*|electricitat\w*|optic\w*|oscilați\w*|oscilati\w*|und\w*|forț\w*|fort\w*|vitez\w*|accelerați\w*|accelerati\w*|energie\w*|curent\w*|tensiune\w*|rezistenț\w*|rezistent\w*|lentil\w*|reflexi\w*|refracți\w*|refract\w*|frecvenț\w*|frecvent\w*|frecven\w*|mărime\w*|marime\w*|newton\w*|joule\w*|ohm\w*|volt\w*|ampere\w*|mechanic\w*|thermodynamic\w*|electric\w*|optic\w*|oscillat\w*|wave\w*|force\w*|velocity\w*|acceleration\w*|energy\w*|current\w*|voltage\w*|resistance\w*|lens\w*|reflection\w*|refraction\w*|frequency\w*/iu;
+const chemistryTerms = /stoichiometr\w*|stoechiometr\w*|reacți\w*|reacti\w*|ecuați\w* chimic\w*|ecuat\w* chimic\w*|formul\w* molecular\w*|formul\w* brut\w*|formul\w* structur\w*|molecul\w*|molar\w*|echilibr\w* chimic\w*|chemical formul\w*|reaction\w*|molecular formul\w*|structural formul\w*|[A-Z][A-Za-z0-9()]*\s*(?:\+|→|->|=)/u;
+const diagramRequestTerms = /deseneaz\w*|desen\w*|schiț\w*|schit\w*|diagram\w*|reprezint\w*|ilustreaz\w*|draw\w*|sketch\w*|illustrat\w*/iu;
+
+type TutorModel = "gpt-5-mini" | "gpt-5" | "gpt-5.5";
+type ModelTier = "routine" | "extended" | "premium";
+type SelectedModel = { model: TutorModel; tier: ModelTier };
+
+export function modelFor(input: {
+  mode: (typeof tutorModes)[number];
+  question: string;
+  subject?: string;
+  hasAttachment?: boolean;
+}): SelectedModel {
+  if (input.mode === "direct" && input.question.length > 1800) return { model: "gpt-5.5", tier: "premium" };
+  const context = `${input.subject ?? ""}\n${input.question}`;
+  const visualRequest = diagramRequestTerms.test(input.question);
+  const geometryRequest = geometryTerms.test(context);
+  const physicsRequest = physicsTerms.test(context);
+  const chemistryRequest = chemistryTerms.test(context);
+  if (
+    geometryRequest
+    || physicsRequest
+    || chemistryRequest
+    || visualRequest
+    || (input.hasAttachment && ["Matematică", "Fizică", "Chimie"].includes(input.subject ?? ""))
+  ) return { model: "gpt-5", tier: "extended" };
+  if (input.mode === "direct" || input.question.length > 900) return { model: "gpt-5", tier: "extended" };
+  return { model: "gpt-5-mini", tier: "routine" };
+}
+
+export async function invokeTutorWithFallback<T>(
+  selected: SelectedModel,
+  invoke: (model: TutorModel) => Promise<T>,
+): Promise<{ result: T; model: TutorModel; tier: ModelTier }> {
+  const fallbackModels: Record<TutorModel, TutorModel[]> = {
+    "gpt-5-mini": ["gpt-5-mini", "gpt-5"],
+    "gpt-5": ["gpt-5", "gpt-5.5", "gpt-5-mini"],
+    "gpt-5.5": ["gpt-5.5", "gpt-5", "gpt-5-mini"],
+  };
+  let lastError: unknown;
+  for (const model of fallbackModels[selected.model]) {
+    try {
+      return {
+        result: await invoke(model),
+        model,
+        tier: model === "gpt-5-mini" ? "routine" : model === "gpt-5" ? "extended" : "premium",
+      };
+    } catch (error) {
+      lastError = error;
+      if (model !== fallbackModels[selected.model].at(-1)) {
+        console.warn(`[Tutor] ${model} request failed; trying the next configured model.`);
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Niciun model AI configurat nu a putut procesa cererea.");
 }
 
 const contentToText = (content: unknown): string => {
@@ -106,7 +159,12 @@ export const assistantRouter = router({
     return { text: result.text, duration: result.duration, language: result.language };
   }),
   chat: publicProcedure.input(tutorChatInputSchema).mutation(async ({ input }) => {
-    const selected = modelFor(input);
+    const selected = modelFor({
+      mode: input.mode,
+      question: input.question,
+      subject: input.subject,
+      hasAttachment: Boolean(input.attachment),
+    });
     const history: Message[] = input.messages.map((message) => ({ role: message.role, content: message.text }));
     let userContent: Message["content"] = `Materia: ${input.subject}\nMod: ${input.mode}\nÎntrebarea elevului: ${input.question || "Analizează enunțul din fișierul atașat și ajută-mă cu primul pas."}`;
     if (input.attachment) {
@@ -126,32 +184,38 @@ export const assistantRouter = router({
         userContent = `${userContent}\nConținutul fișierului ${input.attachment.name}:\n${decoded}`;
       }
     }
-    const result = await invokeLLM({
-      model: selected.model,
-      messages: [
-        { role: "system", content: `${systemPrompt}\n\nIdentifică nivelul școlar potrivit din cerință și rezolvă și probleme de gimnaziu, cu programa și vocabularul acelui nivel. Dacă nu se poate deduce clasa, nu o inventa. Când este util, menționează pe scurt nivelul orientativ și dificultatea. Nivelul de experiență declarat de elev este „${input.learnerLevel ?? "Îmi formez încrederea"}”, iar stilul preferat este „${input.explanationStyle ?? "Scurt și clar"}”. Explică în pași mici, definește termenii noi și verifică înțelegerea înainte de a continua. În modul ghidat oferă un singur pas odată, cu o întrebare clară. Dacă materia selectată pare să nu corespundă cerinței, identifică materia potrivită și adaptează explicația fără să schimbi răspunsul pe baza unei presupuneri nesigure.` },
-        ...history,
-        { role: "user", content: userContent },
-      ],
-      responseFormat: {
-        type: "json_schema",
-        json_schema: {
-          name: "elunariq_tutor_response",
-          schema: tutorResponseJsonSchema,
-          strict: true,
+    const modelResult = await invokeTutorWithFallback(selected, async (model) => {
+      const result = await invokeLLM({
+        model,
+        messages: [
+          { role: "system", content: `${systemPrompt}\n\nGenerează diagramă numai dacă întrebarea curentă o cere explicit sau dacă este esențială pentru explicația curentă. Folosește doar enunțul curent pentru a decide ce să desenezi; nu copia și nu repeta diagrame din mesajele anterioare decât dacă elevul cere explicit să revii la ele. Pentru vectori folosește săgeți orientate și etichete de mărime/direcție cerute. În fizică, desenele de mecanică, termodinamică, electricitate, optică, oscilații și unde trebuie să arate numai elementele fizice relevante, cu convențiile și sensurile corecte; nu adăuga calcule în desen. Folosește marcajul de unghi drept numai pentru 90° explicit. La formule moleculare/structurale folosește diagrama chemistry. Pentru ecuații stoechiometrice folosește diagrama reaction și verifică numărul fiecărui atom pe ambele părți; dacă nu poți verifica ecuația, setează diagram=null.\n\nIdentifică nivelul școlar potrivit din cerință și rezolvă și probleme de gimnaziu, cu programa și vocabularul acelui nivel. Dacă nu se poate deduce clasa, nu o inventa. Când este util, menționează pe scurt nivelul orientativ și dificultatea. Nivelul de experiență declarat de elev este „${input.learnerLevel ?? "Îmi formez încrederea"}”, iar stilul preferat este „${input.explanationStyle ?? "Scurt și clar"}”. Explică în pași mici, definește termenii noi și verifică înțelegerea înainte de a continua. În modul ghidat oferă un singur pas odată, cu o întrebare clară. Dacă materia selectată pare să nu corespundă cerinței, identifică materia potrivită și adaptează explicația fără să schimbi răspunsul pe baza unei presupuneri nesigure.` },
+          ...history,
+          { role: "user", content: userContent },
+        ],
+        responseFormat: {
+          type: "json_schema",
+          json_schema: {
+            name: "elunariq_tutor_response",
+            schema: tutorResponseJsonSchema,
+            strict: true,
+          },
         },
-      },
-      maxCompletionTokens: selected.tier === "premium" ? 1700 : selected.tier === "extended" ? 1400 : 1100,
-      reasoning: selected.tier === "routine" ? { effort: "minimal" } : { effort: selected.tier === "premium" ? "high" : "medium" },
+        maxCompletionTokens: model === "gpt-5.5" ? 1700 : model === "gpt-5" ? 1400 : 1100,
+        reasoning: model === "gpt-5-mini" ? { effort: "minimal" } : { effort: model === "gpt-5.5" ? "high" : "medium" },
+      });
+      const rawText = contentToText(result.choices?.[0]?.message?.content);
+      const parsedResponse = parseTutorResponse(rawText);
+      if (!parsedResponse.text.trim() && !parsedResponse.diagram) {
+        throw new Error("Ghidul nu a returnat un răspuns.");
+      }
+      return parsedResponse;
     });
-    const rawText = contentToText(result.choices?.[0]?.message?.content);
-    const tutorResponse = parseTutorResponse(rawText);
-    if (!tutorResponse.text.trim() && !tutorResponse.diagram) throw new Error("Ghidul nu a returnat un răspuns.");
+    const tutorResponse = modelResult.result;
     return {
       provider: "live" as const,
       text: tutorResponse.text,
-      model: selected.model,
-      tier: selected.tier,
+      model: modelResult.model,
+      tier: modelResult.tier,
       ...(tutorResponse.diagram ? { diagram: tutorResponse.diagram } : {}),
       analysis: tutorResponse.analysis,
     };

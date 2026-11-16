@@ -1,5 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { LearnerState } from "@/shared/learning";
+import {
+  learnerStateSchema,
+  removeQuestionGeneratedLessons,
+  type LearnerState,
+} from "@/shared/learning";
 import { DEFAULT_PREFERENCES, loadPreferences } from "@/lib/storage";
 
 const STORAGE_PREFIX = "elunariq.learner-state.v1";
@@ -7,6 +11,8 @@ const STORAGE_PREFIX = "elunariq.learner-state.v1";
 export const DEFAULT_LEARNER_STATE: LearnerState = {
   preferences: DEFAULT_PREFERENCES,
   questionsAsked: 0,
+  questionDays: [],
+  questionActivity: [],
   savedLessons: [],
   lessonActivity: [],
 };
@@ -19,8 +25,8 @@ export async function loadLearnerState(scope: string): Promise<LearnerState> {
   try {
     const serialized = await AsyncStorage.getItem(getLearnerStorageKey(scope));
     if (serialized) {
-      const parsed: unknown = JSON.parse(serialized);
-      if (isLearnerState(parsed)) return parsed;
+      const parsed = learnerStateSchema.safeParse(JSON.parse(serialized));
+      if (parsed.success) return removeQuestionGeneratedLessons(parsed.data);
     }
   } catch {
     // Keep the learner flow usable if device storage is temporarily unavailable.
@@ -36,7 +42,6 @@ export async function loadLearnerState(scope: string): Promise<LearnerState> {
       // Fall through to the clean defaults.
     }
   }
-
   return DEFAULT_LEARNER_STATE;
 }
 
@@ -52,15 +57,4 @@ export async function saveLearnerState(
   } catch {
     // The caller still updates the in-memory state if storage is unavailable.
   }
-}
-
-function isLearnerState(value: unknown): value is LearnerState {
-  if (!value || typeof value !== "object") return false;
-  const state = value as Partial<LearnerState>;
-  return (
-    typeof state.questionsAsked === "number" &&
-    Array.isArray(state.lessonActivity) &&
-    Array.isArray(state.savedLessons) &&
-    Boolean(state.preferences)
-  );
 }

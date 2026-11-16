@@ -1,9 +1,10 @@
 import "dotenv/config";
 import { defineConfig } from "drizzle-kit";
+import { getDatabaseConnectionUrl } from "./server/_core/databaseConfig";
 
-const connectionString = process.env.DATABASE_URL;
+const connectionString = getDatabaseConnectionUrl();
 if (!connectionString) {
-  throw new Error("DATABASE_URL is required to run drizzle commands");
+  throw new Error("Set DATABASE_URL or all DATABASE_HOST/PORT/USER/PASSWORD/NAME fields to run database commands.");
 }
 
 export default defineConfig({

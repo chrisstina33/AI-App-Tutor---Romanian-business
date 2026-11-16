@@ -13,6 +13,7 @@ export const geometryDiagramSchema = z.object({
     "triangle",
     "square",
     "rectangle",
+    "parallelogram",
     "polygon",
     "intersecting_lines",
     "circle",
@@ -63,6 +64,21 @@ export const chemistryDiagramSchema = z.object({
   }).strict()).max(48),
 }).strict();
 
+const reactionSpeciesSchema = z.object({
+  formula: z.string().regex(/^[A-Z][A-Za-z0-9()]*$/).max(24),
+  coefficient: z.number().int().min(1).max(1000),
+  state: z.enum(["s", "l", "g", "aq", ""]),
+}).strict();
+
+export const reactionDiagramSchema = z.object({
+  category: z.literal("reaction"),
+  caption: z.string().min(1).max(100),
+  schematic: z.literal(true),
+  reactants: z.array(reactionSpeciesSchema).min(1).max(4),
+  products: z.array(reactionSpeciesSchema).min(1).max(4),
+  conditions: z.string().max(100),
+}).strict();
+
 const drawingElementSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("line"), x1: coordinateSchema, y1: coordinateSchema, x2: coordinateSchema, y2: coordinateSchema, arrow: z.boolean(), label: labelSchema }).strict(),
   z.object({ type: z.literal("point"), x: coordinateSchema, y: coordinateSchema, label: labelSchema }).strict(),
@@ -86,11 +102,13 @@ export const schematicDiagramSchema = z.object({
 export const tutorDiagramSchema = z.discriminatedUnion("category", [
   geometryDiagramSchema,
   chemistryDiagramSchema,
+  reactionDiagramSchema,
   schematicDiagramSchema,
 ]);
 
 export type GeometryDiagram = z.infer<typeof geometryDiagramSchema>;
 export type ChemistryDiagram = z.infer<typeof chemistryDiagramSchema>;
+export type ReactionDiagram = z.infer<typeof reactionDiagramSchema>;
 export type SchematicDiagram = z.infer<typeof schematicDiagramSchema>;
 export type TutorDiagram = z.infer<typeof tutorDiagramSchema>;
 
@@ -130,7 +148,73 @@ function polygonBoundaryExists(pointIds: string[], segments: GeometryDiagram["se
   });
 }
 
+const chemicalElements = new Set(
+  "H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv Ts Og".split(" "),
+);
+
+function parseChemicalFormula(formula: string): Map<string, number> | null {
+  let index = 0;
+  const parseGroup = (nested: boolean): Map<string, number> | null => {
+    const counts = new Map<string, number>();
+    let hasElement = false;
+    while (index < formula.length && formula[index] !== ")") {
+      if (formula[index] === "(") {
+        index += 1;
+        const group = parseGroup(true);
+        if (!group || formula[index] !== ")") return null;
+        index += 1;
+        let digits = "";
+        while (/\d/.test(formula[index] ?? "")) digits += formula[index++];
+        const multiplier = digits ? Number(digits) : 1;
+        if (!Number.isSafeInteger(multiplier) || multiplier < 1 || multiplier > 1000) return null;
+        for (const [element, count] of group) {
+          counts.set(element, (counts.get(element) ?? 0) + count * multiplier);
+        }
+        hasElement = true;
+        continue;
+      }
+
+      const elementMatch = formula.slice(index).match(/^[A-Z][a-z]?/);
+      if (!elementMatch || !chemicalElements.has(elementMatch[0])) return null;
+      index += elementMatch[0].length;
+      let digits = "";
+      while (/\d/.test(formula[index] ?? "")) digits += formula[index++];
+      const count = digits ? Number(digits) : 1;
+      if (!Number.isSafeInteger(count) || count < 1 || count > 1000) return null;
+      counts.set(elementMatch[0], (counts.get(elementMatch[0]) ?? 0) + count);
+      hasElement = true;
+    }
+    return hasElement && (!nested || formula[index] === ")") ? counts : null;
+  };
+
+  const counts = parseGroup(false);
+  return counts && index === formula.length ? counts : null;
+}
+
+function balancedReaction(diagram: ReactionDiagram): boolean {
+  const totals = (species: ReactionDiagram["reactants"]) => {
+    const result = new Map<string, number>();
+    for (const item of species) {
+      const formula = parseChemicalFormula(item.formula);
+      if (!formula) return null;
+      for (const [element, count] of formula) {
+        result.set(element, (result.get(element) ?? 0) + count * item.coefficient);
+      }
+    }
+    return result;
+  };
+  const reactants = totals(diagram.reactants);
+  const products = totals(diagram.products);
+  if (!reactants || !products || reactants.size !== products.size) return false;
+  return [...reactants].every(([element, count]) => products.get(element) === count);
+}
+
 export function validateTutorDiagram(diagram: TutorDiagram): string | null {
+  if (diagram.category === "reaction") {
+    return balancedReaction(diagram)
+      ? null
+      : "Reaction formulas must be valid and atom-balanced.";
+  }
   if (diagram.category === "chemistry") {
     const atoms = new Map(diagram.atoms.map((atom) => [atom.id, atom]));
     if (atoms.size !== diagram.atoms.length) return "Atom IDs must be unique.";
@@ -201,7 +285,7 @@ export function validateTutorDiagram(diagram: TutorDiagram): string | null {
   if (diagram.figure === "triangle" && (points.size !== 3 || !polygonBoundaryExists([...points.keys()], diagram.segments))) {
     return "A triangle needs three points connected by its three sides.";
   }
-  if ((diagram.figure === "square" || diagram.figure === "rectangle")
+  if ((diagram.figure === "square" || diagram.figure === "rectangle" || diagram.figure === "parallelogram")
     && (points.size !== 4 || !polygonBoundaryExists([...points.keys()], diagram.segments))) {
     return "A quadrilateral needs four points connected by its four sides.";
   }

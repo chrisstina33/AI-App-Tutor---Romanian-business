@@ -73,7 +73,7 @@ async function readBase64(uri: string): Promise<string> {
 
 export default function TutorScreen() {
   const colors = useColors();
-  const { recordTutorQuestion, state: learnerState } = useLearnerData();
+  const { recordQuestion, state: learnerState } = useLearnerData();
   const params = useLocalSearchParams<{ autoUpload?: string }>();
   const [subject, setSubject] = useState(SUBJECTS[0].label);
   const [agent, setAgent] = useState("Ghid socratic");
@@ -128,7 +128,7 @@ export default function TutorScreen() {
       createdAt: currentTimestamp(),
     };
     setMessages((current) => [...current, next]);
-    setNotice(`${ro.liveTutor} · răspunsul este afișat treptat.${reply.analysis?.confidence !== undefined && reply.analysis.confidence >= 0.8 && reply.analysis.subject !== "necunoscut" ? ` Materie detectată: ${reply.analysis.subject}.` : ""}`);
+    setNotice(`${ro.liveTutor} · ${reply.model ?? "model AI"} · răspunsul este afișat treptat.${reply.analysis?.confidence !== undefined && reply.analysis.confidence >= 0.8 && reply.analysis.subject !== "necunoscut" ? ` Materie detectată: ${reply.analysis.subject}.` : ""}`);
     await revealSlowly(reply.text, (partial) =>
       setMessages((current) =>
         current.map((message) =>
@@ -173,7 +173,7 @@ export default function TutorScreen() {
         : null;
       const effectiveSubject = confidentSubject ?? subject;
       if (confidentSubject) setSubject(confidentSubject);
-      recordTutorQuestion(effectiveSubject, questionText);
+      recordQuestion(effectiveSubject);
       recordedQuestion = true;
       const pdfReply: TutorMessage = {
         id: createMessageId("mastery-pdf"),
@@ -195,7 +195,7 @@ export default function TutorScreen() {
         await clearPendingUpload();
       }
     } catch (error) {
-      if (!recordedQuestion) recordTutorQuestion(subject, questionText);
+      if (!recordedQuestion) recordQuestion(subject);
       const detail = error instanceof Error ? error.message : "Eroare necunoscută";
       console.error("[Tutor] AI request failed", detail);
       const networkFailure =
@@ -306,6 +306,8 @@ export default function TutorScreen() {
           heading: message.diagram!.caption,
           body: message.diagram!.category === "schematic"
             ? message.diagram!.steps.map((step) => `${step.calculation}\n${step.meaning}`).join("\n\n")
+            : message.diagram!.category === "reaction"
+              ? `Reactanți: ${message.diagram!.reactants.map((item) => `${item.coefficient > 1 ? `${item.coefficient} ` : ""}${item.formula}${item.state ? ` (${item.state})` : ""}`).join(" + ")}\nProduși: ${message.diagram!.products.map((item) => `${item.coefficient > 1 ? `${item.coefficient} ` : ""}${item.formula}${item.state ? ` (${item.state})` : ""}`).join(" + ")}${message.diagram!.conditions ? `\nCondiții: ${message.diagram!.conditions}` : ""}`
             : [
                 message.diagram!.schematic ? "Reprezentare schematică, nu este la scară." : "Structură și relații interpretate din enunț.",
                 ...message.diagram!.constraints,
@@ -317,11 +319,10 @@ export default function TutorScreen() {
           body: "Încearcă să explici ideea cu propriile cuvinte, apoi rezolvă un exercițiu fără să privești fișa.",
         },
       ]);
-      setNotice(Platform.OS === "web" ? "Fișa PDF a fost descărcată automat." : ro.pdfReady);
-    } catch {
-      setNotice(
-        "Fișa PDF nu a putut fi pregătită sau partajată. Încearcă din nou după ce verifici conexiunea și opțiunile dispozitivului.",
-      );
+      setNotice(Platform.OS === "web" ? "Alege «Salvează ca PDF» în dialogul de tipărire." : ro.pdfReady);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "Eroare necunoscută";
+      setNotice(`Fișa PDF nu a putut fi pregătită: ${reason}`);
     } finally {
       setPdfBusy(false);
     }
@@ -639,7 +640,7 @@ export default function TutorScreen() {
           <View style={styles.footerActions}>
             <Pressable
               accessibilityRole="button"
-              onPress={exportPdf}
+              onPress={() => void exportPdf()}
               disabled={pdfBusy}
             >
               <Text style={[styles.modeToggle, { color: colors.primary }]}>

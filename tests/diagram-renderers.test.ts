@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { chemistryDiagramSvg, layoutMolecule } from "../lib/chemistry-renderer";
 import { diagramSvg } from "../lib/diagrams";
 import { geometryDiagramSvg, layoutGeometryPoints } from "../lib/geometry-renderer";
-import { validateTutorDiagram, type ChemistryDiagram, type GeometryDiagram } from "../shared/tutor-diagram";
+import { tutorDrawingSvg } from "../lib/tutor-drawing";
+import { validateTutorDiagram, type ChemistryDiagram, type GeometryDiagram, type ReactionDiagram } from "../shared/tutor-diagram";
 import { parseTutorResponse, tutorResponseJsonSchema } from "../server/ai";
 
 afterEach(() => vi.restoreAllMocks());
@@ -142,6 +143,38 @@ describe("semantic geometry diagrams", () => {
     expect(validateTutorDiagram(incomplete)).toContain("four sides");
   });
 
+  it("draws a parallelogram with four sides and marks both opposite pairs parallel", () => {
+    const parallelogram: GeometryDiagram = {
+      category: "geometry",
+      caption: "Paralelogramul ABCD",
+      schematic: true,
+      constraints: [],
+      figure: "parallelogram",
+      points: ["A", "B", "C", "D"].map((id) => ({ id, label: id })),
+      segments: [
+        { id: "AB", from: "A", to: "B", label: "", lineType: "segment" },
+        { id: "BC", from: "B", to: "C", label: "", lineType: "segment" },
+        { id: "CD", from: "C", to: "D", label: "", lineType: "segment" },
+        { id: "DA", from: "D", to: "A", label: "", lineType: "segment" },
+      ],
+      angles: [],
+      relations: [],
+      circles: [],
+    };
+
+    expect(validateTutorDiagram(parallelogram)).toBeNull();
+    const positions = new Map(layoutGeometryPoints(parallelogram).map((point) => [point.id, point]));
+    const a = positions.get("A")!;
+    const b = positions.get("B")!;
+    const c = positions.get("C")!;
+    const d = positions.get("D")!;
+    expect((b.y - a.y) * (d.x - c.x) - (b.x - a.x) * (d.y - c.y)).toBeCloseTo(0);
+    expect((c.y - b.y) * (a.x - d.x) - (c.x - b.x) * (a.y - d.y)).toBeCloseTo(0);
+    const svg = geometryDiagramSvg(parallelogram);
+    expect(svg).toContain('aria-label="Paralelogramul ABCD"');
+    expect((svg.match(/stroke="#A85C43"/g) ?? [])).toHaveLength(8);
+  });
+
   it("renders a circle with a center point and circumference", () => {
     const circle: GeometryDiagram = {
       category: "geometry",
@@ -194,6 +227,44 @@ describe("molecular graph diagrams", () => {
     const positions = [...layoutMolecule(diagram).values()];
     expect(new Set(positions.map(({ x, y }) => `${x.toFixed(2)},${y.toFixed(2)}`)).size).toBe(diagram.atoms.length);
     expect(positions.every(({ x, y }) => x > 20 && x < 300 && y > 20 && y < 160)).toBe(true);
+  });
+
+  describe("reaction and physics diagrams", () => {
+    it("renders a balanced stoichiometric equation and rejects an unbalanced one", () => {
+      const reaction: ReactionDiagram = {
+        category: "reaction",
+        caption: "Sinteza apei",
+        schematic: true,
+        reactants: [
+          { formula: "H2", coefficient: 2, state: "g" },
+          { formula: "O2", coefficient: 1, state: "g" },
+        ],
+        products: [{ formula: "H2O", coefficient: 2, state: "l" }],
+        conditions: "",
+      };
+
+      expect(validateTutorDiagram(reaction)).toBeNull();
+      const svg = diagramSvg(reaction);
+      expect(svg).toContain(">2</tspan>H<tspan");
+      expect(svg).toContain("M 316 66 L 404 66");
+      expect(validateTutorDiagram({ ...reaction, products: [{ ...reaction.products[0], coefficient: 1 }] }))
+        .toContain("atom-balanced");
+    });
+
+    it("renders a vector arrow for a physics schematic", () => {
+      const svg = tutorDrawingSvg({
+        category: "schematic",
+        caption: "Vectorul forței",
+        schematic: true,
+        steps: [],
+        elements: [
+          { type: "line", x1: 10, y1: 50, x2: 80, y2: 50, arrow: true, label: "F" },
+        ],
+      });
+
+      expect(svg).toContain("M 46.4 100 L 245.2 100");
+      expect(svg).toContain(">F</text>");
+    });
   });
 
   it("uses textbook bond angles for straight and branched carbon skeletons", () => {

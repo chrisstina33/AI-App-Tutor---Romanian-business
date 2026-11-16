@@ -12,7 +12,12 @@ import {
   loadLearnerState,
   saveLearnerState,
 } from "@/lib/learner-storage";
-import type { LearnerState } from "@/shared/learning";
+import {
+  learnerStateSchema,
+  recordLearnerQuestion,
+  removeQuestionGeneratedLessons,
+  type LearnerState,
+} from "@/shared/learning";
 import type { Preferences } from "@/lib/storage";
 import { useAuth } from "@/lib/auth-context";
 import { trpc } from "@/lib/trpc";
@@ -21,7 +26,7 @@ type LearnerContextValue = {
   state: LearnerState;
   loading: boolean;
   updatePreferences: (patch: Partial<Preferences>) => void;
-  recordTutorQuestion: (subject: string, question?: string) => void;
+  recordQuestion: (subject: string) => void;
 };
 
 const LearnerContext = createContext<LearnerContextValue | null>(null);
@@ -43,7 +48,9 @@ export function LearnerDataProvider({ children }: { children: React.ReactNode })
     void loadLearnerState(scope).then(async (local) => {
       let saved = local;
       if (scope !== "anonymous" && remoteState.data?.state) {
-        saved = remoteState.data.state;
+        saved = removeQuestionGeneratedLessons(
+          learnerStateSchema.parse(remoteState.data.state),
+        );
       } else if (scope !== "anonymous" && !local.questionsAsked && !local.lessonActivity.length) {
         saved = await loadLearnerState("anonymous");
       }
@@ -77,44 +84,16 @@ export function LearnerDataProvider({ children }: { children: React.ReactNode })
     [replaceLocalState],
   );
 
-  const recordTutorQuestion = useCallback(
-    (subject: string, question?: string) => {
-      const normalizedSubject = subject.trim() || "Materie";
-      const topic = question?.replace(/\s+/g, " ").trim().replace(/[.!?].*$/, "").slice(0, 72);
-      const topicSlug = topic?.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 44) || "sesiune";
-      const id = `tutor-${normalizedSubject
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")}-${topicSlug}`.slice(0, 80);
-      const now = new Date().toISOString();
-      const existing = stateRef.current.lessonActivity.find(
-        (lesson) => lesson.id === id,
-      );
-      const title = topic ? `${normalizedSubject}: ${topic}` : `${normalizedSubject}: sesiune cu tutorul`;
-      const lesson = {
-        id,
-        title,
-        subject: normalizedSubject,
-        questionCount: (existing?.questionCount ?? 0) + 1,
-        lastStudiedAt: now,
-      };
-
-      replaceLocalState({
-        ...stateRef.current,
-        questionsAsked: stateRef.current.questionsAsked + 1,
-        lessonActivity: [
-          lesson,
-          ...stateRef.current.lessonActivity.filter((item) => item.id !== id),
-        ].slice(0, 100),
-      });
+  const recordQuestion = useCallback(
+    (subject: string) => {
+      replaceLocalState(recordLearnerQuestion(stateRef.current, subject));
     },
     [replaceLocalState],
   );
 
   const value = useMemo(
-    () => ({ state, loading, updatePreferences, recordTutorQuestion }),
-    [state, loading, updatePreferences, recordTutorQuestion],
+    () => ({ state, loading, updatePreferences, recordQuestion }),
+    [state, loading, updatePreferences, recordQuestion],
   );
 
   useEffect(() => {

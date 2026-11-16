@@ -14,8 +14,8 @@ export function LearningDiagram({ diagram }: { diagram: TutorDiagram }) {
       <Text style={[styles.stepNumber, { color: colors.primary }]}>{index + 1}.</Text>
       <View style={styles.stepCopy}><Text style={[styles.calculation, { color: colors.foreground }]}>{step.calculation}</Text><Text style={[styles.meaning, { color: colors.muted }]}>{step.meaning}</Text></View>
     </View>) : null}
-    <SvgXml xml={svg} width="100%" height={diagram.category === "chemistry" ? 190 : 210} />
-    {diagram.category !== "schematic" && diagram.constraints.length > 0 ? <Text style={[styles.constraints, { color: colors.foreground }]}>{diagram.constraints.join(" · ")}</Text> : null}
+    <SvgXml xml={svg} width="100%" height={diagram.category === "reaction" ? 130 : diagram.category === "chemistry" ? 190 : 210} />
+    {(diagram.category === "geometry" || diagram.category === "chemistry") && diagram.constraints.length > 0 ? <Text style={[styles.constraints, { color: colors.foreground }]}>{diagram.constraints.join(" · ")}</Text> : null}
     <Text style={[styles.caption, { color: colors.muted }]}>{diagram.caption} · {diagram.schematic ? "reprezentare schematică, nu este la scară" : "verifică etichetele cu enunțul"}</Text>
   </View>;
 }

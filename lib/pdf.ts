@@ -47,7 +47,7 @@ export async function generateLearningPdf(
         `<section><h2>${escapeHtml(section.heading)}</h2><div>${renderMathInBody(section.body)}</div>${section.diagramSvg ? `<div class="diagram">${section.diagramSvg}</div>` : ""}</section>`,
     )
     .join("");
-  const html = `<!doctype html><html lang="ro"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+  const html = `<!doctype html><html lang="ro"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>
     @page{margin:22mm 18mm}body{font-family:Arial,sans-serif;color:#171a32;padding:0;margin:0;line-height:1.6;font-size:11pt}
     @media screen{body{box-sizing:border-box;width:794px;padding:72px 68px;background:#fff}}
     h1{color:#12152a;border-bottom:3px solid #8a72ff;padding-bottom:12px;font-size:24pt}h2{color:#6d58dc;margin-top:26px;font-size:15pt}
@@ -61,60 +61,40 @@ export async function generateLearningPdf(
   </script></head><body><h1>${escapeHtml(title)}</h1>${body}<footer><p>Creat cu Elunariq · învață prin următorul pas</p></footer></body></html>`;
 
   if (Platform.OS === "web") {
-    const frame = document.createElement("iframe");
-    frame.title = "Previzualizare fișă PDF";
-    frame.style.position = "fixed";
-    frame.style.left = "-10000px";
-    frame.style.top = "0";
-    frame.style.width = "794px";
-    frame.style.height = "1px";
-    frame.style.border = "0";
-    document.body.appendChild(frame);
-    try {
-      await new Promise<void>((resolve, reject) => {
-        frame.onload = () => resolve();
-        frame.onerror = () => reject(new Error("Fișa nu a putut fi pregătită pentru descărcare."));
-        frame.srcdoc = html;
-      });
-      const frameWindow = frame.contentWindow as (Window & { MathJax?: { typesetPromise?: () => Promise<void> } }) | null;
-      const frameDocument = frame.contentDocument;
-      if (!frameWindow || !frameDocument?.body) throw new Error("Fișa PDF nu a putut fi randată.");
-      await frameWindow.MathJax?.typesetPromise?.().catch(() => undefined);
-      await frameDocument.fonts?.ready;
-      frame.style.height = `${Math.max(400, frameDocument.body.scrollHeight + 32)}px`;
-      const html2canvas = (await import("html2canvas")).default;
-      const { jsPDF } = await import("jspdf/dist/jspdf.es.min.js");
-      const canvas = await html2canvas(frameDocument.body, {
-        backgroundColor: "#FFFFFF",
-        scale: 2,
-        useCORS: true,
-        windowWidth: 794,
-      });
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const pageSliceHeight = Math.floor((canvas.width * pageHeight) / pageWidth);
-      let sourceY = 0;
-      let page = 0;
-      while (sourceY < canvas.height) {
-        const sliceHeight = Math.min(pageSliceHeight, canvas.height - sourceY);
-        const pageCanvas = document.createElement("canvas");
-        pageCanvas.width = canvas.width;
-        pageCanvas.height = sliceHeight;
-        const context = pageCanvas.getContext("2d");
-        if (!context) throw new Error("Browserul nu a putut crea fișa PDF.");
-        context.drawImage(canvas, 0, sourceY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
-        if (page > 0) pdf.addPage();
-        pdf.addImage(pageCanvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, pageWidth, (sliceHeight / canvas.width) * pageWidth);
-        sourceY += sliceHeight;
-        page += 1;
-      }
-      const safeName = title.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "fisa-elunariq";
-      pdf.save(`${safeName}.pdf`);
-      return true;
-    } finally {
-      frame.remove();
-    }
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) throw new Error("Browserul a blocat fereastra pentru PDF. Permite ferestrele pop-up și încearcă din nou.");
+
+    await new Promise<void>((resolve, reject) => {
+      let printed = false;
+      let timeout: ReturnType<typeof setTimeout>;
+      const print = () => {
+        if (printed) return;
+        printed = true;
+        clearTimeout(timeout);
+        try {
+          printWindow.focus();
+          printWindow.print();
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      };
+      timeout = setTimeout(print, 2500);
+      printWindow.addEventListener("load", () => {
+        const mathJaxWindow = printWindow as Window & {
+          MathJax?: { typesetPromise?: () => Promise<void> };
+        };
+        void mathJaxWindow.MathJax?.typesetPromise?.()
+          .catch(() => undefined)
+          .finally(() => setTimeout(print, 100));
+        if (!mathJaxWindow.MathJax?.typesetPromise) setTimeout(print, 100);
+      }, { once: true });
+      printWindow.addEventListener("afterprint", () => printWindow.close(), { once: true });
+      printWindow.document.open();
+      printWindow.document.write(html);
+      printWindow.document.close();
+    });
+    return true;
   }
 
   const result = await Print.printToFileAsync({ html });

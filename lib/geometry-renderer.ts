@@ -87,6 +87,15 @@ export function layoutGeometryPoints(diagram: GeometryDiagram): PositionedPoint[
         { x: 160 - halfWidth, y: 105 + halfHeight },
       ][index]);
     });
+  } else if (diagram.figure === "parallelogram") {
+    [order[0], order[1], order[2], order[3]].forEach((id, index) => {
+      positions.set(id, [
+        { x: 63, y: 62 },
+        { x: 250, y: 62 },
+        { x: 277, y: 148 },
+        { x: 90, y: 148 },
+      ][index]);
+    });
   } else if (diagram.figure === "intersecting_lines") {
     const lines = diagram.segments.filter((segment) => segment.lineType === "line").slice(0, 2);
     const perpendicular = diagram.relations.some((relation) => relation.type === "perpendicular"
@@ -192,7 +201,31 @@ function intersect(a: Point, b: Point, c: Point, d: Point): Point | null {
 }
 
 function relationSvg(diagram: GeometryDiagram, pointMap: Map<string, PositionedPoint>): string {
-  return diagram.relations.map((relation) => {
+  const relations = [...diagram.relations];
+  if (diagram.figure === "parallelogram") {
+    const order = polygonOrder(diagram);
+    const edges = order.map((from, index) => {
+      const to = order[(index + 1) % order.length];
+      return diagram.segments.find((segment) =>
+        (segment.from === from && segment.to === to)
+        || (segment.from === to && segment.to === from),
+      );
+    });
+    for (const [firstIndex, secondIndex] of [[0, 2], [1, 3]]) {
+      const first = edges[firstIndex];
+      const second = edges[secondIndex];
+      if (!first || !second) continue;
+      if (relations.some((relation) => relation.type === "parallel"
+        && [relation.firstSegment, relation.secondSegment].includes(first.id)
+        && [relation.firstSegment, relation.secondSegment].includes(second.id))) continue;
+      relations.push({
+        type: "parallel",
+        firstSegment: first.id,
+        secondSegment: second.id,
+      });
+    }
+  }
+  return relations.map((relation) => {
     const first = diagram.segments.find((segment) => segment.id === relation.firstSegment)!;
     const second = diagram.segments.find((segment) => segment.id === relation.secondSegment)!;
     const [a, b] = lineEndpoints(diagram, pointMap, first);

@@ -14,6 +14,7 @@ export default function ProgressScreen() {
   const colors = useColors();
   const { state, loading } = useLearnerData();
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfNotice, setPdfNotice] = useState("");
   const recentLessons = useMemo(
     () => [...state.lessonActivity].sort(
       (a, b) => new Date(b.lastStudiedAt).getTime() - new Date(a.lastStudiedAt).getTime(),
@@ -25,27 +26,31 @@ export default function ProgressScreen() {
     start.setHours(0, 0, 0, 0);
     start.setDate(start.getDate() - 6);
     return new Set(
-      recentLessons
-        .map((lesson) => new Date(lesson.lastStudiedAt))
+      state.questionDays
+        .map((day) => new Date(`${day}T00:00:00`))
         .filter((date) => !Number.isNaN(date.getTime()) && date >= start)
         .map((date) => String(date.getFullYear()) + "-" + String(date.getMonth()) + "-" + String(date.getDate())),
     ).size;
-  }, [recentLessons]);
+  }, [state.questionDays]);
 
   async function exportWeeklyRecap() {
     if (pdfBusy) return;
     setPdfBusy(true);
     try {
       await generateLearningPdf("Progresul tău · Elunariq", [
-        { heading: "Activitate", body: String(state.questionsAsked) + " întrebări adresate tutorului în " + String(state.lessonActivity.length) + " lecții." },
+        { heading: "Activitate", body: String(state.questionsAsked) + " întrebări adresate tutorului și " + String(state.lessonActivity.length) + " lecții salvate." },
         {
           heading: "Lecții recente",
           body: recentLessons.length
             ? recentLessons.map((lesson) => lesson.subject + ": " + lesson.title + " · " + String(lesson.questionCount) + " întrebări").join("\n")
-            : "Nu ai început încă o lecție. Alege o materie și trimite prima întrebare tutorului.",
+            : "Nu ai salvat încă nicio lecție. Întrebările adresate tutorului sunt urmărite separat.",
         },
-        { heading: "Următorul pas", body: "Continuă lecția și explică primul pas cu propriile cuvinte." },
+        { heading: "Următorul pas", body: "Continuă să înveți și explică primul pas cu propriile cuvinte." },
       ]);
+      setPdfNotice("Alege «Salvează ca PDF» în dialogul de tipărire.");
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "Eroare necunoscută";
+      setPdfNotice(`PDF-ul nu a putut fi pregătit: ${reason}`);
     } finally {
       setPdfBusy(false);
     }
@@ -66,10 +71,10 @@ export default function ProgressScreen() {
           <View style={styles.streakCopy}>
             <Badge tone={colors.success}>{activeDays ? "RITMUL TĂU" : "PRIMUL PAS"}</Badge>
             <Text style={[styles.streakTitle, { color: colors.foreground }]}>
-              {activeDays ? String(activeDays) + (activeDays === 1 ? " zi activă" : " zile active") : "Începe prima lecție"}
+              {activeDays ? String(activeDays) + (activeDays === 1 ? " zi activă" : " zile active") : "Începe să înveți"}
             </Text>
             <Text style={[styles.streakBody, { color: colors.muted }]}>
-              {activeDays ? "Zile cu activitate în ultimele 7 zile." : "Întrebările trimise tutorului vor apărea aici."}
+              {activeDays ? "Zile cu întrebări adresate în ultimele 7 zile." : "Zilele active se calculează din întrebările adresate tutorului."}
             </Text>
           </View>
           <View style={[styles.streakCircle, { borderColor: colors.primary }]}>
@@ -87,7 +92,7 @@ export default function ProgressScreen() {
           <SurfaceCard style={styles.statCard}>
             <Text style={[styles.statLabel, { color: colors.muted }]}>Lecții accesate</Text>
             <Text style={[styles.statValue, { color: colors.foreground }]}>{state.lessonActivity.length}</Text>
-            <Text style={[styles.statHint, { color: colors.muted }]}>actualizate la fiecare întrebare</Text>
+            <Text style={[styles.statHint, { color: colors.muted }]}>nu includ întrebările trimise</Text>
           </SurfaceCard>
         </View>
 
@@ -97,9 +102,8 @@ export default function ProgressScreen() {
         </Text>
         <View style={styles.subjectGrid}>
           {SUBJECTS.map((subject) => {
-            const questionCount = state.lessonActivity
-              .filter((lesson) => lesson.subject === subject.label)
-              .reduce((total, lesson) => total + lesson.questionCount, 0);
+            const questionCount = state.questionActivity
+              .find((activity) => activity.subject === subject.label)?.questionCount ?? 0;
             return (
               <SurfaceCard key={subject.id} style={styles.subjectCard}>
                 <View style={styles.subjectHeader}>
@@ -136,8 +140,8 @@ export default function ProgressScreen() {
           ))
         ) : (
           <SurfaceCard style={styles.emptyCard}>
-            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Lecțiile tale vor apărea aici</Text>
-            <Text style={[styles.emptyBody, { color: colors.muted }]}>Trimite o întrebare tutorului pentru a începe să construiești progresul tău.</Text>
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Nu ai lecții salvate încă</Text>
+            <Text style={[styles.emptyBody, { color: colors.muted }]}>Întrebările adresate tutorului sunt contorizate separat și nu devin automat lecții.</Text>
           </SurfaceCard>
         )}
 
@@ -156,6 +160,7 @@ export default function ProgressScreen() {
           <Pressable accessibilityRole="button" onPress={exportWeeklyRecap} style={[styles.pdfButton, { backgroundColor: colors.primary }]}>
             {pdfBusy ? <ActivityIndicator color="#FFFFFF" /> : <><MaterialIcons name="picture-as-pdf" size={16} color="#FFFFFF" /><Text style={styles.pdfText}>Generează PDF</Text></>}
           </Pressable>
+          {pdfNotice ? <Text style={[styles.revisionBody, { color: colors.muted }]}>{pdfNotice}</Text> : null}
         </SurfaceCard>
 
         <SurfaceCard style={styles.parentCard}>
