@@ -13,7 +13,7 @@ Elunariq is a portrait-first learning companion for high-school students. The MV
 - Provide e-mail/password sign-in with scrypt password hashes, expiring API sessions, server-side student progress sync, and one-time parent invitation codes. Apply migrations and configure production account recovery, email verification, and mobile secure token storage before launch.
 - Support homework selection and send image/PDF/TXT contents to the tutor service; validate supported types and the 10 MB limit. Image/PDF understanding depends on a vision/document model configured on the server.
 - Transcribe voice notes on the server when Forge Speech-to-Text is configured; let the student review and edit the transcript before sending it to the tutor.
-- Generate topic-based SVG teaching schematics in tutor answers and include them in PDF exports. The current diagrams are explanatory schematics, not exact geometric constructions.
+- Request structured diagram interpretations from the configured GPT-5 mini tutor model, validate them server-side, and render diagrams with deterministic SVG layout. Geometry uses semantic points and relationships; chemistry uses a validated atom/bond graph. Mark layouts as schematic when the exercise does not determine exact measurements, and include the rendered diagrams in PDF exports.
 - Add accessible empty/loading/error states, keyboard-dismiss-friendly inputs, haptic feedback on primary actions, and compact modal sheets for search, tutor controls, and profile editing.
 
 ## Project structure

@@ -47,9 +47,8 @@ import {
 } from "@/services/ai-service";
 import { getApiBaseUrl } from "@/constants/api";
 import { trpc } from "@/lib/trpc";
-import { diagramSvg, getLessonDiagram } from "@/lib/diagrams";
-import { tutorDrawingSvg } from "@/lib/tutor-drawing";
-import type { TutorDrawing } from "@/shared/tutor-drawing";
+import { diagramSvg } from "@/lib/diagrams";
+import type { TutorDiagram } from "@/shared/tutor-diagram";
 
 const INITIAL_MESSAGE: TutorMessage = {
   id: "welcome",
@@ -107,11 +106,10 @@ export default function TutorScreen() {
       text: string;
       provider: "live";
       model?: string;
-      drawing?: TutorDrawing;
+      diagram?: TutorDiagram;
       analysis?: TutorMessage["analysis"];
     },
     requestedMode: TutorMode,
-    diagram?: { kind: "parabola" | "triangle" | "forces" | "molecule"; caption: string } | null,
   ) {
     const id = createMessageId("assistant");
     const next: TutorMessage = {
@@ -121,7 +119,7 @@ export default function TutorScreen() {
       mode: requestedMode,
       provider: reply.provider,
       model: reply.model,
-      ...(reply.drawing ? { drawing: reply.drawing } : diagram ? { diagram } : {}),
+      ...(reply.diagram ? { diagram: reply.diagram } : {}),
       ...(reply.analysis ? { analysis: reply.analysis } : {}),
       createdAt: currentTimestamp(),
     };
@@ -173,7 +171,6 @@ export default function TutorScreen() {
       if (confidentSubject) setSubject(confidentSubject);
       recordTutorQuestion(effectiveSubject, questionText);
       recordedQuestion = true;
-      const fallbackDiagram = live.drawing ? null : getLessonDiagram(effectiveSubject, `${questionText} ${live.text}`);
       const pdfReply: TutorMessage = {
         id: createMessageId("mastery-pdf"),
         role: "assistant",
@@ -181,11 +178,11 @@ export default function TutorScreen() {
         mode: requestedMode,
         provider: live.provider,
         model: live.model,
-        ...(live.drawing ? { drawing: live.drawing } : fallbackDiagram ? { diagram: fallbackDiagram } : {}),
+        ...(live.diagram ? { diagram: live.diagram } : {}),
         analysis: live.analysis,
         createdAt: currentTimestamp(),
       };
-      await addReply(live, requestedMode, fallbackDiagram);
+      await addReply(live, requestedMode);
       if (requestedMode === "check" && live.analysis?.mastery === "demonstrated") {
         await exportPdf([pdfReply], effectiveSubject);
       }
@@ -301,10 +298,15 @@ export default function TutorScreen() {
             ? formulas.join("\n\n")
             : "În această sesiune nu a fost folosită o formulă.",
         },
-        ...exportMessages.filter((message) => message.role === "assistant" && (message.drawing || message.diagram)).map((message) => ({
-          heading: message.drawing?.caption ?? message.diagram?.caption ?? "Schiță de lecție",
-          body: message.drawing?.steps.map((step) => `${step.calculation}\n${step.meaning}`).join("\n\n") ?? "Schiță orientativă pe baza materiei și a întrebării. Verifică notarea cu enunțul original.",
-          diagramSvg: message.drawing ? tutorDrawingSvg(message.drawing) : message.diagram ? diagramSvg(message.diagram.kind) : undefined,
+        ...exportMessages.filter((message) => message.role === "assistant" && message.diagram).map((message) => ({
+          heading: message.diagram!.caption,
+          body: message.diagram!.category === "schematic"
+            ? message.diagram!.steps.map((step) => `${step.calculation}\n${step.meaning}`).join("\n\n")
+            : [
+                message.diagram!.schematic ? "Reprezentare schematică, nu este la scară." : "Structură și relații interpretate din enunț.",
+                ...message.diagram!.constraints,
+              ].join("\n\n"),
+          diagramSvg: diagramSvg(message.diagram!),
         })),
         {
           heading: "Următorul pas",

@@ -95,7 +95,7 @@ export function TutorMessageCard({ message }: { message: TutorMessage }) {
             </Text>
           );
         })}
-        {assistant && message.drawing ? <LearningDiagram drawing={message.drawing} /> : assistant && message.diagram ? <LearningDiagram kind={message.diagram.kind} caption={message.diagram.caption} /> : null}
+        {assistant && message.diagram ? <LearningDiagram diagram={message.diagram} /> : null}
       </View>
     </View>
   );

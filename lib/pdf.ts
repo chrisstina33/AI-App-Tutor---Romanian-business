@@ -83,7 +83,7 @@ export async function generateLearningPdf(
       await frameDocument.fonts?.ready;
       frame.style.height = `${Math.max(400, frameDocument.body.scrollHeight + 32)}px`;
       const html2canvas = (await import("html2canvas")).default;
-      const { jsPDF } = await import("jspdf");
+      const { jsPDF } = await import("jspdf/dist/jspdf.es.min.js");
       const canvas = await html2canvas(frameDocument.body, {
         backgroundColor: "#FFFFFF",
         scale: 2,
