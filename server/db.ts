@@ -4,27 +4,22 @@ import { createPool } from "mysql2";
 import { InsertUser, learnerStates, users } from "../drizzle/schema";
 import type { LearnerState } from "../shared/learning";
 import { ENV } from "./_core/env";
-import { getDatabaseConnectionUrl } from "./_core/databaseConfig";
+import { getDatabaseConnectionOptions } from "./_core/databaseConfig";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
-  const connectionUrl = getDatabaseConnectionUrl();
-  if (!_db && connectionUrl) {
-    try {
-      const pool = createPool({
-        uri: connectionUrl,
-        connectionLimit: 10,
-        ...(process.env.DATABASE_SSL === "true"
-          ? { ssl: { minVersion: "TLSv1.2" as const } }
-          : {}),
-      });
-      _db = drizzle(pool);
-    } catch {
-      console.warn("[Database] Failed to connect");
-      _db = null;
-    }
+  const connection = getDatabaseConnectionOptions();
+  if (!_db && connection) {
+    const pool = createPool({
+      ...connection,
+      connectionLimit: 10,
+      ...(process.env.DATABASE_SSL === "true"
+        ? { ssl: { minVersion: "TLSv1.2" as const } }
+        : {}),
+    });
+    _db = drizzle(pool);
   }
   return _db;
 }

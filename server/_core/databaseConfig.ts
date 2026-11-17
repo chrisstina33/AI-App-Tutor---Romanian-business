@@ -1,5 +1,13 @@
 type DatabaseEnvironment = Record<string, string | undefined>;
 
+export type DatabaseConnectionOptions = {
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  database: string;
+};
+
 export function getDatabaseConnectionUrl(
   env: DatabaseEnvironment = process.env,
 ): string | null {
@@ -34,4 +42,26 @@ export function getDatabaseConnectionUrl(
   url.password = required.DATABASE_PASSWORD!;
   url.pathname = `/${encodeURIComponent(required.DATABASE_NAME!)}`;
   return url.toString();
+}
+
+export function getDatabaseConnectionOptions(
+  env: DatabaseEnvironment = process.env,
+): DatabaseConnectionOptions | null {
+  const connectionUrl = getDatabaseConnectionUrl(env);
+  if (!connectionUrl) return null;
+
+  const url = new URL(connectionUrl);
+  if (url.protocol !== "mysql:") {
+    throw new Error("Database URL must use the mysql:// protocol.");
+  }
+  const database = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
+  if (!database) throw new Error("Database name is missing from the database connection.");
+
+  return {
+    host: url.hostname,
+    port: url.port ? Number(url.port) : 3306,
+    user: decodeURIComponent(url.username),
+    password: decodeURIComponent(url.password),
+    database,
+  };
 }

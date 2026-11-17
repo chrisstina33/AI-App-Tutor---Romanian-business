@@ -1,0 +1,2 @@
+export const PREMIUM_MONTHLY_PRICE_MINOR = 4_999;
+export const PREMIUM_MONTHLY_PRICE_LABEL = "49,99 lei";

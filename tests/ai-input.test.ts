@@ -1,7 +1,29 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { invokeTutorWithFallback, modelFor, tutorChatInputSchema } from "../server/ai";
+import { revealSlowly } from "../services/ai-service";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
+
+describe("tutor reply reveal", () => {
+  it("reveals replies character by character at a slower pace", async () => {
+    vi.useFakeTimers();
+    const updates: string[] = [];
+    const reveal = revealSlowly("Bun.", (partial) => updates.push(partial));
+
+    expect(updates).toEqual(["B"]);
+    await vi.advanceTimersByTimeAsync(54);
+    expect(updates).toEqual(["B"]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(updates).toEqual(["B", "Bu"]);
+    await vi.runAllTimersAsync();
+    await reveal;
+
+    expect(updates.at(-1)).toBe("Bun.");
+  });
+});
 
 describe("tutor chat input", () => {
   const baseInput = {
@@ -29,25 +51,33 @@ describe("tutor chat input", () => {
     expect(result.success).toBe(false);
   });
 
-  it("routes geometry requests to gpt-5 while leaving routine questions on gpt-5-mini", () => {
+  it("routes explicit visual requests to high complexity and simple questions to low", () => {
     expect(modelFor({ mode: "guided", subject: "Matematică", question: "Desenează un paralelogram." }))
-      .toEqual({ model: "gpt-5", tier: "extended" });
+      .toEqual({ model: "gpt-5.5", tier: "high" });
     expect(modelFor({ mode: "guided", subject: "Matematică", question: "Cât este 2 + 2?" }))
-      .toEqual({ model: "gpt-5-mini", tier: "routine" });
+      .toEqual({ model: "gpt-5-mini", tier: "low" });
   });
 
-  it("routes specialist physics and chemistry requests to gpt-5", () => {
+  it("routes specialist text problems to medium and molecular structure drawings to high", () => {
     expect(modelFor({ mode: "guided", subject: "Fizică", question: "Desenează vectorul forței." }))
-      .toEqual({ model: "gpt-5", tier: "extended" });
+      .toEqual({ model: "gpt-5.5", tier: "high" });
     expect(modelFor({ mode: "guided", subject: "Chimie", question: "Echilibrează reacția de combustie." }))
-      .toEqual({ model: "gpt-5", tier: "extended" });
+      .toEqual({ model: "gpt-5", tier: "medium" });
+    expect(modelFor({ mode: "guided", subject: "Chimie", question: "Desenează structura 2-metilbutanului." }))
+      .toEqual({ model: "gpt-5.5", tier: "high" });
+    expect(modelFor({ mode: "guided", subject: "Fizică", question: "Ce este energia?" }))
+      .toEqual({ model: "gpt-5-mini", tier: "low" });
+    expect(modelFor({ mode: "guided", subject: "Chimie", question: "Ce este o moleculă?" }))
+      .toEqual({ model: "gpt-5-mini", tier: "low" });
+    expect(modelFor({ mode: "guided", subject: "Fizică", question: "Rezolvă problema pas cu pas." }))
+      .toEqual({ model: "gpt-5", tier: "medium" });
   });
 
   it("falls back through configured models and reports which model succeeded", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const tried: string[] = [];
     const result = await invokeTutorWithFallback(
-      { model: "gpt-5-mini", tier: "routine" },
+      { model: "gpt-5-mini", tier: "low" },
       async (model) => {
         tried.push(model);
         if (model === "gpt-5-mini") throw new Error("model unavailable");
@@ -56,6 +86,6 @@ describe("tutor chat input", () => {
     );
 
     expect(tried).toEqual(["gpt-5-mini", "gpt-5"]);
-    expect(result).toEqual({ result: "Răspuns", model: "gpt-5", tier: "extended" });
+    expect(result).toEqual({ result: "Răspuns", model: "gpt-5", tier: "medium" });
   });
 });

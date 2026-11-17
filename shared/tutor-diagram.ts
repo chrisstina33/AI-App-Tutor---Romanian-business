@@ -46,7 +46,7 @@ export const geometryDiagramSchema = z.object({
   }).strict()).max(4),
 }).strict();
 
-const chemistryElements = ["C", "N", "O", "F", "Cl", "Br", "I"] as const;
+const chemistryElements = ["C", "N", "O", "F", "Cl", "Br", "I", "P", "S"] as const;
 
 export const chemistryDiagramSchema = z.object({
   category: z.literal("chemistry"),
@@ -120,6 +120,8 @@ const atomValence: Record<(typeof chemistryElements)[number], number> = {
   Cl: 1,
   Br: 1,
   I: 1,
+  P: 5,
+  S: 6,
 };
 
 function connectedComponentCount(adjacency: Map<string, string[]>): number {
@@ -240,9 +242,8 @@ export function validateTutorDiagram(diagram: TutorDiagram): string | null {
     }
     if (connectedComponentCount(adjacency) !== 1) return "A molecule must be a connected graph.";
     const isTree = diagram.bonds.length === diagram.atoms.length - 1;
-    const isSimpleRing = diagram.bonds.length === diagram.atoms.length
-      && diagram.atoms.every((atom) => adjacency.get(atom.id)!.length === 2);
-    if (!isTree && !isSimpleRing) return "Only acyclic molecules and simple rings are supported.";
+    const isUnicyclic = diagram.bonds.length === diagram.atoms.length;
+    if (!isTree && !isUnicyclic) return "Only acyclic molecules and molecules with one ring are supported.";
     return null;
   }
 

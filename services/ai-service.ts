@@ -25,16 +25,27 @@ export function buildTutorPrompt(input: TutorInput): string {
 export function createMessageId(prefix: string): string { return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`; }
 
 export async function revealSlowly(text: string, onUpdate: (partial: string) => void): Promise<void> {
-  const tokens = text.split(/(\s+)/);
+  const characters = Array.from(text);
   let partial = "";
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index];
-    partial += token;
+  for (let index = 0; index < characters.length; index += 1) {
+    const character = characters[index];
+    partial += character;
     onUpdate(partial);
-    if (!token.trim()) continue;
-    const sentenceEnd = /[.!?…:]$/.test(token);
-    const paragraphEnd = sentenceEnd && Boolean(tokens[index + 1]?.includes("\n\n"));
-    const delay = paragraphEnd ? 900 : sentenceEnd ? 520 : 85;
+    if (index === characters.length - 1) continue;
+    const paragraphEnd =
+      /[.!?…]/.test(character) &&
+      characters[index + 1] === "\n" &&
+      characters[index + 2] === "\n";
+    const sentenceEnd = /[.!?…]/.test(character);
+    const delay = paragraphEnd
+      ? 900
+      : sentenceEnd
+        ? 520
+        : /[,;:]/.test(character)
+          ? 180
+          : /\s/.test(character)
+            ? 20
+            : 55;
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
 }

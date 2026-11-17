@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getDatabaseConnectionUrl } from "../server/_core/databaseConfig";
+import {
+  getDatabaseConnectionOptions,
+  getDatabaseConnectionUrl,
+} from "../server/_core/databaseConfig";
 
 describe("database connection settings", () => {
   it("builds a MySQL URL from separate connection fields and safely encodes credentials", () => {
@@ -25,6 +28,18 @@ describe("database connection settings", () => {
       DATABASE_URL: "mysql://user:password@db.example.test:4000/elunariq",
       DATABASE_HOST: "ignored.example.test",
     })).toBe("mysql://user:password@db.example.test:4000/elunariq");
+  });
+
+  it("parses a URL into Drizzle connection fields so TLS options can be applied", () => {
+    expect(getDatabaseConnectionOptions({
+      DATABASE_URL: "mysql://db-user:p%40ss%3Aword@cluster.example.test:4000/elunariq",
+    })).toEqual({
+      host: "cluster.example.test",
+      port: 4000,
+      user: "db-user",
+      password: "p@ss:word",
+      database: "elunariq",
+    });
   });
 
   it("reports missing fields without exposing their values", () => {

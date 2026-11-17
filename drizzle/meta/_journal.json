@@ -22,6 +22,13 @@
       "when": 1794665523000,
       "tag": "0002_auth_parent_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1794932598919,
+      "tag": "0003_billing_and_education",
+      "breakpoints": true
     }
   ]
 }

@@ -4,7 +4,7 @@ import { diagramSvg } from "../lib/diagrams";
 import { geometryDiagramSvg, layoutGeometryPoints } from "../lib/geometry-renderer";
 import { tutorDrawingSvg } from "../lib/tutor-drawing";
 import { validateTutorDiagram, type ChemistryDiagram, type GeometryDiagram, type ReactionDiagram } from "../shared/tutor-diagram";
-import { parseTutorResponse, tutorResponseJsonSchema } from "../server/ai";
+import { diagramForTutorSubject, parseTutorResponse, tutorResponseJsonSchema } from "../server/ai";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -302,6 +302,45 @@ describe("molecular graph diagrams", () => {
     expect([...positions.values()].every(({ x, y }) => x > 20 && x < 300 && y > 20 && y < 160)).toBe(true);
   });
 
+  it("lays out a ring with a carbon side chain", () => {
+    const ringWithBranch: ChemistryDiagram = {
+      category: "chemistry",
+      caption: "Metilciclohexan",
+      schematic: true,
+      constraints: [],
+      atoms: atoms(["C1", "C2", "C3", "C4", "C5", "C6", "M1"]),
+      bonds: [
+        bond("C1", "C2"), bond("C2", "C3"), bond("C3", "C4"),
+        bond("C4", "C5"), bond("C5", "C6"), bond("C6", "C1"),
+        bond("C2", "M1"),
+      ],
+    };
+    expect(validateTutorDiagram(ringWithBranch)).toBeNull();
+    const positions = layoutMolecule(ringWithBranch);
+    expect(positions.size).toBe(7);
+    expect(new Set([...positions.values()].map(({ x, y }) => `${x.toFixed(2)},${y.toFixed(2)}`)).size).toBe(7);
+    expect([...positions.values()].every(({ x, y }) => x > 20 && x < 300 && y > 20 && y < 160)).toBe(true);
+    expect(chemistryDiagramSvg(ringWithBranch)).toContain('aria-label="Metilciclohexan"');
+  });
+
+  it("supports phosphorus and sulfur atoms in organic structures", () => {
+    const sulfide: ChemistryDiagram = {
+      category: "chemistry",
+      caption: "Sulfidă organică",
+      schematic: false,
+      constraints: [],
+      atoms: [
+        { id: "C1", element: "C" },
+        { id: "S1", element: "S" },
+        { id: "C2", element: "C" },
+        { id: "P1", element: "P" },
+      ],
+      bonds: [bond("C1", "S1"), bond("S1", "C2"), bond("C2", "P1")],
+    };
+    expect(validateTutorDiagram(sulfide)).toBeNull();
+    expect(chemistryDiagramSvg(sulfide)).toContain(">S</text>");
+  });
+
   it("rejects over-valent and disconnected molecular graphs", () => {
     const invalidValence: ChemistryDiagram = {
       category: "chemistry",
@@ -356,5 +395,16 @@ describe("structured tutor responses", () => {
     }));
     expect(response.text).toBe("Verifică numărul legăturilor carbonului.");
     expect(response.diagram).toBeNull();
+  });
+
+  it("does not display mathematical geometry as a physics diagram", () => {
+    expect(diagramForTutorSubject("Fizică", triangle)).toBeUndefined();
+    expect(diagramForTutorSubject("Fizică", {
+      category: "schematic",
+      caption: "Forță",
+      schematic: true,
+      steps: [],
+      elements: [],
+    })?.category).toBe("schematic");
   });
 });

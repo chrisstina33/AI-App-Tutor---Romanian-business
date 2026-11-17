@@ -202,7 +202,9 @@ export default function TutorScreen() {
         /fetch|network|timeout|failed to connect/i.test(detail);
       setNotice(
         networkFailure
-          ? `Nu mă pot conecta la serverul AI (${getApiBaseUrl()}). Verifică internetul și dacă serviciul Render este pornit, apoi încearcă din nou.`
+          ? Platform.OS === "web"
+            ? `Nu mă pot conecta la serverul AI (${getApiBaseUrl()}). Verifică dacă originea exactă a site-ului este permisă în CORS_ALLOWED_ORIGINS pe serverul API.`
+            : `Nu mă pot conecta la serverul AI (${getApiBaseUrl()}). Verifică internetul și dacă serviciul Render este pornit, apoi încearcă din nou.`
           : `Cererea nu a putut fi procesată: ${detail}.`,
       );
     } finally {

@@ -63,6 +63,7 @@ describe("Mobile API origin isolation", () => {
     expect([...trustedExpoWebOrigins()].sort()).toEqual([
       "https://8081-sandbox.region.preview.example.test",
       "https://8328-sandbox.region.preview.example.test",
+      "https://ai-app-tutor-hsic26.vercel.app",
     ]);
   });
 
@@ -89,6 +90,23 @@ describe("Mobile API origin isolation", () => {
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get("access-control-allow-origin")).toBe(
       "https://elunariq.example",
+    );
+  });
+
+  it("allows the production Vercel app origin on browser preflight requests", async () => {
+    const base = await testServer(true, trustedExpoWebOrigins());
+    const response = await fetch(`${base}/write`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://ai-app-tutor-hsic26.vercel.app",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type,authorization",
+      },
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "https://ai-app-tutor-hsic26.vercel.app",
     );
   });
 
@@ -195,7 +213,9 @@ describe("Mobile API origin isolation", () => {
     const previousPackager = process.env.EXPO_PACKAGER_PROXY_URL;
     try {
       process.env.EXPO_PACKAGER_PROXY_URL = origin;
-      expect([...trustedExpoWebOrigins()]).toEqual([]);
+      expect([...trustedExpoWebOrigins()]).toEqual([
+        "https://ai-app-tutor-hsic26.vercel.app",
+      ]);
       const base = await testServer(
         false,
         new Set([origin]),

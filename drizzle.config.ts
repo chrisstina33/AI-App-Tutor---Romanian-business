@@ -1,9 +1,9 @@
 import "dotenv/config";
 import { defineConfig } from "drizzle-kit";
-import { getDatabaseConnectionUrl } from "./server/_core/databaseConfig";
+import { getDatabaseConnectionOptions } from "./server/_core/databaseConfig";
 
-const connectionString = getDatabaseConnectionUrl();
-if (!connectionString) {
+const connection = getDatabaseConnectionOptions();
+if (!connection) {
   throw new Error("Set DATABASE_URL or all DATABASE_HOST/PORT/USER/PASSWORD/NAME fields to run database commands.");
 }
 
@@ -12,9 +12,9 @@ export default defineConfig({
   out: "./drizzle",
   dialect: "mysql",
   dbCredentials: {
-    url: connectionString,
+    ...connection,
     ...(process.env.DATABASE_SSL === "true"
-      ? { ssl: { minVersion: "TLSv1.2" as const } }
+      ? { ssl: { rejectUnauthorized: true } }
       : {}),
   },
 });

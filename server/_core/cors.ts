@@ -5,6 +5,7 @@ const LOOPBACK_IPS = new BlockList();
 LOOPBACK_IPS.addSubnet("127.0.0.0", 8, "ipv4");
 LOOPBACK_IPS.addAddress("::1", "ipv6");
 LOOPBACK_IPS.addSubnet("::ffff:127.0.0.0", 104, "ipv6");
+const PRODUCTION_WEB_ORIGINS = ["https://ai-app-tutor-hsic26.vercel.app"];
 
 function configuredOrigin(name: "EXPO_PACKAGER_PROXY_URL" | "EXPO_WEB_PREVIEW_URL"): string | null {
   const value = process.env[name];
@@ -21,26 +22,26 @@ function configuredOrigin(name: "EXPO_PACKAGER_PROXY_URL" | "EXPO_WEB_PREVIEW_UR
 
 function configuredCorsOrigins(): Set<string> {
   const configured = process.env.CORS_ALLOWED_ORIGINS;
-  if (!configured?.trim()) return new Set();
+  const origins = new Set(PRODUCTION_WEB_ORIGINS);
+  if (!configured?.trim()) return origins;
 
-  return new Set(
-    configured.split(",").map((value) => {
-      const origin = value.trim();
-      let url: URL;
-      try {
-        url = new URL(origin);
-      } catch {
-        throw new Error(`Invalid origin in CORS_ALLOWED_ORIGINS: ${origin}`);
-      }
-      if (
-        (url.protocol !== "https:" && url.protocol !== "http:") ||
-        url.origin !== origin
-      ) {
-        throw new Error(`Invalid origin in CORS_ALLOWED_ORIGINS: ${origin}`);
-      }
-      return origin;
-    }),
-  );
+  for (const value of configured.split(",")) {
+    const origin = value.trim();
+    let url: URL;
+    try {
+      url = new URL(origin);
+    } catch {
+      throw new Error(`Invalid origin in CORS_ALLOWED_ORIGINS: ${origin}`);
+    }
+    if (
+      (url.protocol !== "https:" && url.protocol !== "http:") ||
+      url.origin !== origin
+    ) {
+      throw new Error(`Invalid origin in CORS_ALLOWED_ORIGINS: ${origin}`);
+    }
+    origins.add(origin);
+  }
+  return origins;
 }
 
 function pairedPreviewOrigin(packagerOrigin: string): string | null {

@@ -1,6 +1,8 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useState } from "react";
 import {
+  Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -25,6 +27,7 @@ import { ACCENT_COLORS, useThemeContext } from "@/lib/theme-provider";
 import { useLearnerData } from "@/lib/learner-context";
 import { useAuth } from "@/lib/auth-context";
 import { trpc } from "@/lib/trpc";
+import { PREMIUM_MONTHLY_PRICE_LABEL } from "@/shared/billing";
 
 export default function ProfileScreen() {
   const colors = useColors();
@@ -50,6 +53,13 @@ export default function ProfileScreen() {
   const inviteMutation = trpc.auth.createParentInvite.useMutation();
   const linkMutation = trpc.auth.linkStudent.useMutation();
   const parentOverview = trpc.auth.parentOverview.useQuery(undefined, { enabled: user?.accountType === "parent", retry: false, refetchInterval: 30_000 });
+  const billingStatus = trpc.billing.status.useQuery(undefined, {
+    enabled: Boolean(user),
+    retry: false,
+    refetchInterval: user ? 15_000 : false,
+  });
+  const checkoutMutation = trpc.billing.createCheckout.useMutation();
+  const portalMutation = trpc.billing.createPortal.useMutation();
   async function submitAccount() {
     setAccountNotice("");
     try {
@@ -69,6 +79,22 @@ export default function ProfileScreen() {
   async function connectStudent() {
     try { await linkMutation.mutateAsync({ code: inviteCode }); setInviteCode(""); await parentOverview.refetch(); setAccountNotice("Contul elevului a fost asociat."); }
     catch (error) { setAccountNotice(error instanceof Error ? error.message : "Asocierea nu a reușit."); }
+  }
+  async function startCheckout() {
+    try {
+      const session = await checkoutMutation.mutateAsync();
+      await Linking.openURL(session.url);
+    } catch (error) {
+      setAccountNotice(error instanceof Error ? error.message : "Checkout-ul nu a putut fi deschis.");
+    }
+  }
+  async function manageSubscription() {
+    try {
+      const session = await portalMutation.mutateAsync();
+      await Linking.openURL(session.url);
+    } catch (error) {
+      setAccountNotice(error instanceof Error ? error.message : "Administrarea abonamentului nu a putut fi deschisă.");
+    }
   }
   async function signOut() {
     try { await signOutMutation.mutateAsync(); } catch { /* Expired sessions can still be cleared locally. */ }
@@ -378,21 +404,63 @@ export default function ProfileScreen() {
                 Abonament propus pentru lansare
               </Text>
             </View>
-            <Badge tone={colors.warning}>În pregătire</Badge>
+            <Badge tone={billingStatus.data?.active ? colors.success : colors.warning}>
+              {billingStatus.data?.active ? "Activ" : "Plan pilot"}
+            </Badge>
           </View>
           <View style={styles.premiumPriceRow}>
             <Text style={[styles.premiumPrice, { color: colors.foreground }]}>
-              49,99 lei
+              {PREMIUM_MONTHLY_PRICE_LABEL}
             </Text>
             <Text style={[styles.premiumUnit, { color: colors.muted }]}>
-              / lună · preț propus
+              / lună
             </Text>
           </View>
           <Text style={[styles.premiumBody, { color: colors.muted }]}>
-            Acces extins la tutor, fișe teoretice cu formule randate și
-            recapitulări de învățare — beneficii propuse, încă neactivate prin
-            billing.
+            Acces la explicații complexe și resurse vizuale pentru un elev.
+            Abonamentul lunar se plătește cu cardul pe web; contul elevului
+            trebuie asociat contului părintelui.
           </Text>
+          {billingStatus.data?.active ? (
+            <>
+              <Text style={[styles.premiumDetailText, { color: colors.success }]}>
+                Abonament activ{billingStatus.data.currentPeriodEnd
+                  ? ` până la ${new Date(billingStatus.data.currentPeriodEnd).toLocaleDateString("ro-RO")}`
+                  : ""}.
+              </Text>
+              {user?.accountType === "parent" && Platform.OS === "web" ? (
+                <Pressable onPress={manageSubscription} disabled={portalMutation.isPending} style={[styles.premiumAction, { borderColor: colors.border }]}>
+                  <Text style={[styles.premiumActionText, { color: colors.primary }]}>Administrează abonamentul</Text>
+                </Pressable>
+              ) : null}
+            </>
+          ) : user?.accountType === "parent" && Platform.OS === "web" ? (
+            (parentOverview.data?.length ?? 0) === 1 ? (
+              <Pressable onPress={startCheckout} disabled={checkoutMutation.isPending} style={[styles.premiumAction, { borderColor: colors.primary, backgroundColor: `${colors.primary}12` }]}>
+                <Text style={[styles.premiumActionText, { color: colors.primary }]}>
+                  {checkoutMutation.isPending ? "Se deschide plata..." : "Continuă la plata cu cardul"}
+                </Text>
+              </Pressable>
+            ) : (
+              <Text style={[styles.premiumDetailText, { color: colors.muted }]}>
+                {(parentOverview.data?.length ?? 0) === 0
+                  ? "Asociază mai întâi un singur cont de elev."
+                  : "Planul de pilot acoperă un singur elev; abonamentele pentru mai mulți elevi sunt încă în pregătire."}
+              </Text>
+            )
+          ) : user?.accountType === "parent" ? (
+            <Text style={[styles.premiumDetailText, { color: colors.muted }]}>
+              Plata cu cardul este disponibilă în versiunea web a pilotului.
+            </Text>
+          ) : user?.accountType === "student" ? (
+            <Text style={[styles.premiumDetailText, { color: colors.muted }]}>
+              Plata cu cardul este gestionată de părinte. Asociază contul părintelui pentru acces Premium.
+            </Text>
+          ) : (
+            <Text style={[styles.premiumDetailText, { color: colors.muted }]}>
+              Creează un cont de părinte și asociază un elev pentru a cumpăra abonamentul.
+            </Text>
+          )}
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ expanded: premiumDetails }}
@@ -418,14 +486,14 @@ export default function ProfileScreen() {
               ]}
             >
               <Text style={[styles.premiumDetailText, { color: colors.muted }]}>
-                Prima săptămână este menționată în documente între 9 și 19 lei;
-                suma exactă nu este decisă. În această versiune nu se pot
-                cumpăra abonamente și nu începe nicio perioadă de probă.
+                Nu există perioadă de probă. Plata recurentă este de{" "}
+                {PREMIUM_MONTHLY_PRICE_LABEL} pe lună și poate fi administrată
+                sau anulată din portalul de facturare.
               </Text>
               <Text style={[styles.premiumDetailText, { color: colors.muted }]}>
-                Plata va fi activată după alegerea platformei și conectarea
-                facturării oficiale. Pentru elevii minori, fluxul de cumpărare
-                trebuie proiectat pentru părinte.
+                Planul pentru centre educaționale este în pregătire; nu se
+                activează checkout sau acces de centru până la definirea
+                locurilor și a facturării.
               </Text>
             </View>
           ) : null}

@@ -4,6 +4,7 @@ import {
   mysqlEnum,
   mysqlTable,
   uniqueIndex,
+  index,
   text,
   timestamp,
   varchar,
@@ -72,6 +73,45 @@ export const parentLinks = mysqlTable("parent_links", {
   studentId: int("studentId").notNull().references(() => users.id, { onDelete: "cascade" }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [uniqueIndex("parent_student_unique").on(table.parentId, table.studentId)]);
+
+export const subscriptions = mysqlTable("subscriptions", {
+  id: int("id").autoincrement().primaryKey(),
+  parentId: int("parentId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  studentId: int("studentId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  stripeCustomerId: varchar("stripeCustomerId", { length: 255 }).notNull(),
+  stripeSubscriptionId: varchar("stripeSubscriptionId", { length: 255 }).notNull().unique(),
+  status: varchar("status", { length: 32 }).notNull(),
+  currentPeriodEnd: timestamp("currentPeriodEnd"),
+  cancelAtPeriodEnd: int("cancelAtPeriodEnd").notNull().default(0),
+  lastStripeEventCreatedAt: int("lastStripeEventCreatedAt").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("subscriptions_parent_status_idx").on(table.parentId, table.status),
+  index("subscriptions_student_status_idx").on(table.studentId, table.status),
+]);
+
+export const billingEvents = mysqlTable("billing_events", {
+  eventId: varchar("eventId", { length: 255 }).notNull().primaryKey(),
+  processedAt: timestamp("processedAt").defaultNow().notNull(),
+});
+
+export const educationalCenters = mysqlTable("educational_centers", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 180 }).notNull(),
+  billingEmail: varchar("billingEmail", { length: 320 }),
+  status: mysqlEnum("status", ["draft", "active", "suspended"]).default("draft").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const centerMemberships = mysqlTable("center_memberships", {
+  id: int("id").autoincrement().primaryKey(),
+  centerId: int("centerId").notNull().references(() => educationalCenters.id, { onDelete: "cascade" }),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: mysqlEnum("role", ["owner", "educator", "student"]).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [uniqueIndex("center_user_unique").on(table.centerId, table.userId)]);
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;

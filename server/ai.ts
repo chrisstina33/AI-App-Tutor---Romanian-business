@@ -1,5 +1,7 @@
 import { z } from "zod";
-import { tutorDiagramSchema, validateTutorDiagram } from "../shared/tutor-diagram";
+import { hasPremiumAccess } from "./billing";
+import { TRPCError } from "@trpc/server";
+import { tutorDiagramSchema, validateTutorDiagram, type TutorDiagram } from "../shared/tutor-diagram";
 import { invokeLLM, type Message } from "./_core/llm";
 import { transcribeAudioBase64 } from "./_core/voiceTranscription";
 import { publicProcedure, router } from "./_core/trpc";
@@ -58,19 +60,16 @@ Returnează numai obiectul JSON cerut de schema structurată. Completează răsp
 
 Pentru categoria geometry, identifică figura, punctele/etichetele, segmentele, unghiurile, relațiile de paralelism/perpendicularitate/egalitate și cercurile cerute. Desenul trebuie să conțină numai figura și informațiile geometrice relevante pentru a o reprezenta; nu include calcule, formule de rezolvare, răspunsuri sau detalii fără legătură cu desenul. În câmpul constraints păstrează doar datele geometrice explicite din enunț care nu sunt deja reprezentate de etichete sau marcaje; pentru o figură cerută fără date suplimentare, lasă lista goală. Codifică lungimile și unghiurile cunoscute în etichetele elementelor relevante. Referințele trebuie să indice numai ID-uri declarate. Pentru paralelogram folosește figura parallelogram, exact patru puncte în ordinea conturului și cele patru laturi, fără diagonale dacă nu sunt cerute. Pentru triunghi, pătrat și dreptunghi folosește punctele și laturile în ordinea ciclului conturului. Alege intersecting_lines când sunt două drepte care se intersectează. Marchează un unghi ca drept numai când enunțul spune explicit că măsoară 90° ori că este perpendicular; nu deduce egalități sau perpendicularități doar din tipul figurii. Setează schematic=true când măsurile ori unghiurile exacte lipsesc; nu inventa valori și nu pretinde că desenul este la scară. Fă unghiul de la C explicit prin vertex, ray1 și ray2.
 
-Pentru categoria chemistry, emite graful molecular și proprietățile/constrângerile exacte în constraints: fiecare atom o singură dată, fiecare legătură cu ordinul corect, inclusiv ramificațiile și substituenții. Carbonul și hidrogenul implicit trebuie să respecte valența; hidrogenii impliciți nu se trimit ca atomi separați. Verifică numărul de atomi și conectivitatea structurii față de numele/enunțul moleculei. Dacă identificarea moleculei ori conectivitatea este ambiguă, setează diagram=null; nu ghici. Rendererul acceptă numai legături covalente neutre cu C, N, O, F, Cl, Br și I.
+În Fizică, nu folosi categoria geometry pentru diagrame de concepte, vectori, circuite, optică sau mecanică; folosește schematic numai când schema fizică este cerută și poate fi reprezentată corect. Pentru categoria chemistry, emite graful molecular și proprietățile/constrângerile exacte în constraints: fiecare atom o singură dată, fiecare legătură cu ordinul corect, inclusiv ramificațiile și substituenții. Carbonul și hidrogenul implicit trebuie să respecte valența; hidrogenii impliciți nu se trimit ca atomi separați. Verifică numărul de atomi și conectivitatea structurii față de numele/enunțul moleculei. Dacă identificarea moleculei ori conectivitatea este ambiguă, setează diagram=null; nu ghici. Rendererul acceptă molecule neutre cu legături simple, duble și triple formate din C, N, O, P, S, F, Cl, Br și I, inclusiv lanțuri ramificate și molecule cu un singur inel.
 
 Folosește categoria schematic numai pentru explicații vizuale non-geometrice (de exemplu, o schemă de forțe). Coordonatele sunt permise numai aici și trebuie să fie o schiță orientativă. Dacă desenul corect nu poate fi construit din enunț, folosește diagram=null.
 
 În diagramă, include toate câmpurile cerute de schemă. Câmpurile textuale label fără etichetă trebuie să fie șirul gol. În analysis, evaluează exercițiul curent și nu deduce materia doar din selector. Pentru date insuficiente folosește necunoscut și confidence sub 0.8. Folosește mastery="demonstrated" numai în modul check, după o încercare reală și corectă cu raționament; în celelalte moduri folosește unknown. Nu inventa clasa exactă.`;
 
-const geometryTerms = /paralelogram\w*|romb\w*|patrulater\w*|triunghi\w*|dreptunghi\w*|pătrat\w*|patrat\w*|cerc\w*|unghi\w*|latur\w*|segment\w*|diagonal\w*|perimetru\w*|arie\w*|perpendicular\w*|paralel\w*|bisectoare\w*|mediatoare\w*|median\w*|vector\w*|parallelogram\w*|quadrilateral\w*|triangle\w*|rectangle\w*|square\w*|circle\w*|angle\w*|perimeter\w*|area\w*|perpendicular\w*|parallel\w*|vector\w*|geometr\w*/iu;
-const physicsTerms = /mecanic\w*|termodinamic\w*|electricitat\w*|optic\w*|oscilați\w*|oscilati\w*|und\w*|forț\w*|fort\w*|vitez\w*|accelerați\w*|accelerati\w*|energie\w*|curent\w*|tensiune\w*|rezistenț\w*|rezistent\w*|lentil\w*|reflexi\w*|refracți\w*|refract\w*|frecvenț\w*|frecvent\w*|frecven\w*|mărime\w*|marime\w*|newton\w*|joule\w*|ohm\w*|volt\w*|ampere\w*|mechanic\w*|thermodynamic\w*|electric\w*|optic\w*|oscillat\w*|wave\w*|force\w*|velocity\w*|acceleration\w*|energy\w*|current\w*|voltage\w*|resistance\w*|lens\w*|reflection\w*|refraction\w*|frequency\w*/iu;
-const chemistryTerms = /stoichiometr\w*|stoechiometr\w*|reacți\w*|reacti\w*|ecuați\w* chimic\w*|ecuat\w* chimic\w*|formul\w* molecular\w*|formul\w* brut\w*|formul\w* structur\w*|molecul\w*|molar\w*|echilibr\w* chimic\w*|chemical formul\w*|reaction\w*|molecular formul\w*|structural formul\w*|[A-Z][A-Za-z0-9()]*\s*(?:\+|→|->|=)/u;
 const diagramRequestTerms = /deseneaz\w*|desen\w*|schiț\w*|schit\w*|diagram\w*|reprezint\w*|ilustreaz\w*|draw\w*|sketch\w*|illustrat\w*/iu;
 
 type TutorModel = "gpt-5-mini" | "gpt-5" | "gpt-5.5";
-type ModelTier = "routine" | "extended" | "premium";
+type ModelTier = "low" | "medium" | "high";
 type SelectedModel = { model: TutorModel; tier: ModelTier };
 
 export function modelFor(input: {
@@ -79,21 +78,16 @@ export function modelFor(input: {
   subject?: string;
   hasAttachment?: boolean;
 }): SelectedModel {
-  if (input.mode === "direct" && input.question.length > 1800) return { model: "gpt-5.5", tier: "premium" };
-  const context = `${input.subject ?? ""}\n${input.question}`;
-  const visualRequest = diagramRequestTerms.test(input.question);
-  const geometryRequest = geometryTerms.test(context);
-  const physicsRequest = physicsTerms.test(context);
-  const chemistryRequest = chemistryTerms.test(context);
-  if (
-    geometryRequest
-    || physicsRequest
-    || chemistryRequest
-    || visualRequest
-    || (input.hasAttachment && ["Matematică", "Fizică", "Chimie"].includes(input.subject ?? ""))
-  ) return { model: "gpt-5", tier: "extended" };
-  if (input.mode === "direct" || input.question.length > 900) return { model: "gpt-5", tier: "extended" };
-  return { model: "gpt-5-mini", tier: "routine" };
+  const visualRequest = diagramRequestTerms.test(input.question)
+    || /schemă|schema|resurs\w* vizual\w*|material\w* didactic\w* complex\w*|plan\w* de lecți\w*|formul\w* structur\w*|structur\w* molecular\w*/iu.test(input.question);
+  if (input.hasAttachment || visualRequest || input.question.length > 1800) {
+    return { model: "gpt-5.5", tier: "high" };
+  }
+  const mediumComplexity = /mai mulți pași|mai multe etape|pas cu pas|rezolvă complet|rezolvare completă|explică în detaliu|explicați\w* complex\w*|explicație complexă|demonstrează|arată derivarea|compară|multi-step|step by step|stoichiometr\w*|stoechiometr\w*|reacți\w*|echilibr\w* chimic\w*|balance\w* reaction\w*/iu;
+  if (mediumComplexity.test(input.question) || input.question.length > 900) {
+    return { model: "gpt-5", tier: "medium" };
+  }
+  return { model: "gpt-5-mini", tier: "low" };
 }
 
 export async function invokeTutorWithFallback<T>(
@@ -111,7 +105,7 @@ export async function invokeTutorWithFallback<T>(
       return {
         result: await invoke(model),
         model,
-        tier: model === "gpt-5-mini" ? "routine" : model === "gpt-5" ? "extended" : "premium",
+        tier: model === "gpt-5-mini" ? "low" : model === "gpt-5" ? "medium" : "high",
       };
     } catch (error) {
       lastError = error;
@@ -152,19 +146,35 @@ export function parseTutorResponse(rawText: string) {
   return parsed.data;
 }
 
+export function diagramForTutorSubject(
+  subject: string,
+  diagram: TutorDiagram | undefined,
+): TutorDiagram | undefined {
+  if ((subject === "Fizică" || subject === "Chimie") && diagram?.category === "geometry") {
+    return undefined;
+  }
+  return diagram;
+}
+
 export const assistantRouter = router({
   transcribe: publicProcedure.input(z.object({ base64: z.string().min(1).max(23_000_000), mimeType: z.string().max(80) })).mutation(async ({ input }) => {
     const result = await transcribeAudioBase64({ ...input, language: "ro" });
     if ("error" in result) throw new Error(result.error);
     return { text: result.text, duration: result.duration, language: result.language };
   }),
-  chat: publicProcedure.input(tutorChatInputSchema).mutation(async ({ input }) => {
+  chat: publicProcedure.input(tutorChatInputSchema).mutation(async ({ input, ctx }) => {
     const selected = modelFor({
       mode: input.mode,
       question: input.question,
       subject: input.subject,
       hasAttachment: Boolean(input.attachment),
     });
+    if (selected.tier !== "low" && (!ctx.user || !await hasPremiumAccess(ctx.user.id))) {
+      throw new TRPCError({
+        code: ctx.user ? "FORBIDDEN" : "UNAUTHORIZED",
+        message: "Explicațiile complexe și resursele vizuale sunt disponibile cu Premium. Abonamentul se activează din contul părintelui.",
+      });
+    }
     const history: Message[] = input.messages.map((message) => ({ role: message.role, content: message.text }));
     let userContent: Message["content"] = `Materia: ${input.subject}\nMod: ${input.mode}\nÎntrebarea elevului: ${input.question || "Analizează enunțul din fișierul atașat și ajută-mă cu primul pas."}`;
     if (input.attachment) {
@@ -205,10 +215,17 @@ export const assistantRouter = router({
       });
       const rawText = contentToText(result.choices?.[0]?.message?.content);
       const parsedResponse = parseTutorResponse(rawText);
+      const diagramSubject = parsedResponse.analysis.subject === "necunoscut"
+        ? input.subject
+        : parsedResponse.analysis.subject;
+      const subjectDiagram = diagramForTutorSubject(diagramSubject, parsedResponse.diagram ?? undefined);
+      if (parsedResponse.diagram && !subjectDiagram) {
+        console.warn("[Tutor] Mathematical geometry figure omitted for a science response");
+      }
       if (!parsedResponse.text.trim() && !parsedResponse.diagram) {
         throw new Error("Ghidul nu a returnat un răspuns.");
       }
-      return parsedResponse;
+      return { ...parsedResponse, diagram: subjectDiagram ?? null };
     });
     const tutorResponse = modelResult.result;
     return {

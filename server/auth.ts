@@ -21,7 +21,7 @@ function isDuplicateKeyError(error: unknown): boolean {
   const candidate = error as { code?: unknown; errno?: unknown };
   return candidate.code === "ER_DUP_ENTRY" || candidate.errno === 1062;
 }
-function unavailable(): never { throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Conturile au nevoie de DATABASE_URL și migrarea auth v2 pe server." }); }
+function unavailable(): never { throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Conturile au nevoie de DATABASE_URL (sau toate câmpurile DATABASE_*), de conexiune la baza de date și de migrarea auth v2 pe server." }); }
 async function createSession(userId: number) {
   const db = await getDb(); if (!db) unavailable();
   const token = randomBytes(32).toString("base64url");

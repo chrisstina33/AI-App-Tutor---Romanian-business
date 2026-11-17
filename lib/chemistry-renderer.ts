@@ -51,6 +51,21 @@ function branchAngle(occupied: number[]): number {
   })).sort((a, b) => a.score - b.score || a.angle - b.angle)[0].angle;
 }
 
+function fitToCanvas(positions: Map<string, Point>): Map<string, Point> {
+  const values = [...positions.values()];
+  const minX = Math.min(...values.map((point) => point.x));
+  const maxX = Math.max(...values.map((point) => point.x));
+  const minY = Math.min(...values.map((point) => point.y));
+  const maxY = Math.max(...values.map((point) => point.y));
+  const scale = Math.min(250 / Math.max(maxX - minX, 1), 108 / Math.max(maxY - minY, 1));
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  return new Map([...positions].map(([id, point]) => [
+    id,
+    { x: 160 + (point.x - centerX) * scale, y: 91 + (point.y - centerY) * scale },
+  ]));
+}
+
 export function layoutMolecule(diagram: ChemistryDiagram): Map<string, Point> {
   const adjacency = new Map(diagram.atoms.map((atom) => [atom.id, [] as string[]]));
   for (const bond of diagram.bonds) {
@@ -73,6 +88,76 @@ export function layoutMolecule(diagram: ChemistryDiagram): Map<string, Point> {
         const angle = -Math.PI / 2 + (index * 2 * Math.PI) / diagram.atoms.length;
         return [id, { x: 160 + Math.cos(angle) * radius, y: 91 + Math.sin(angle) * radius }];
       }));
+    }
+  }
+
+  if (diagram.bonds.length === diagram.atoms.length && diagram.atoms.length > 2) {
+    const remaining = new Set(adjacency.keys());
+    const degrees = new Map([...adjacency].map(([id, neighbors]) => [id, neighbors.length]));
+    const leaves = [...degrees].filter(([, degree]) => degree < 2).map(([id]) => id);
+    for (let index = 0; index < leaves.length; index += 1) {
+      const leaf = leaves[index];
+      if (!remaining.delete(leaf)) continue;
+      for (const neighbor of adjacency.get(leaf) ?? []) {
+        if (!remaining.has(neighbor)) continue;
+        const degree = degrees.get(neighbor)! - 1;
+        degrees.set(neighbor, degree);
+        if (degree === 1) leaves.push(neighbor);
+      }
+    }
+
+    const start = remaining.values().next().value as string | undefined;
+    if (start && remaining.size >= 3 && [...remaining].every((id) =>
+      (adjacency.get(id) ?? []).filter((neighbor) => remaining.has(neighbor)).length === 2)) {
+      const cycle = [start];
+      let previous: string | undefined;
+      while (cycle.length < remaining.size) {
+        const current = cycle[cycle.length - 1];
+        const next = adjacency.get(current)!.find((id) => remaining.has(id) && id !== previous);
+        if (!next || next === start || cycle.includes(next)) break;
+        cycle.push(next);
+        previous = current;
+      }
+      if (cycle.length === remaining.size && adjacency.get(cycle[cycle.length - 1])!.includes(start)) {
+        const radius = Math.min(68, 16 * cycle.length);
+        const positions = new Map<string, Point>();
+        cycle.forEach((id, index) => {
+          const angle = -Math.PI / 2 + (index * 2 * Math.PI) / cycle.length;
+          positions.set(id, { x: 160 + Math.cos(angle) * radius, y: 91 + Math.sin(angle) * radius });
+        });
+
+        const bondLength = 44;
+        function growBranch(id: string, parent: string, direction: number): void {
+          const parentPosition = positions.get(parent)!;
+          positions.set(id, {
+            x: parentPosition.x + Math.cos(direction) * bondLength,
+            y: parentPosition.y + Math.sin(direction) * bondLength,
+          });
+          const currentPosition = positions.get(id)!;
+          const occupied = [Math.atan2(parentPosition.y - currentPosition.y, parentPosition.x - currentPosition.x)];
+          for (const child of adjacency.get(id) ?? []) {
+            if (child === parent || remaining.has(child)) continue;
+            const angle = branchAngle(occupied);
+            occupied.push(angle);
+            growBranch(child, id, angle);
+          }
+        }
+
+        for (const id of cycle) {
+          const origin = positions.get(id)!;
+          const occupied = (adjacency.get(id) ?? [])
+            .filter((neighbor) => remaining.has(neighbor))
+            .map((neighbor) => positions.get(neighbor)!)
+            .map((point) => Math.atan2(point.y - origin.y, point.x - origin.x));
+          for (const branch of adjacency.get(id) ?? []) {
+            if (remaining.has(branch)) continue;
+            const angle = branchAngle(occupied);
+            occupied.push(angle);
+            growBranch(branch, id, angle);
+          }
+        }
+        return fitToCanvas(positions);
+      }
     }
   }
 
@@ -120,18 +205,7 @@ export function layoutMolecule(diagram: ChemistryDiagram): Map<string, Point> {
     }
   }
 
-  const values = [...positions.values()];
-  const minX = Math.min(...values.map((point) => point.x));
-  const maxX = Math.max(...values.map((point) => point.x));
-  const minY = Math.min(...values.map((point) => point.y));
-  const maxY = Math.max(...values.map((point) => point.y));
-  const scale = Math.min(250 / Math.max(maxX - minX, 1), 108 / Math.max(maxY - minY, 1));
-  const centerX = (minX + maxX) / 2;
-  const centerY = (minY + maxY) / 2;
-  return new Map([...positions].map(([id, point]) => [
-    id,
-    { x: 160 + (point.x - centerX) * scale, y: 91 + (point.y - centerY) * scale },
-  ]));
+  return fitToCanvas(positions);
 }
 
 function bondSvg(start: Point, end: Point, order: number): string {

@@ -17,4 +17,7 @@ export const ENV = {
   openRouterGpt5MiniModel: process.env.OPENROUTER_MODEL_GPT5_MINI ?? "openai/gpt-5-mini",
   openRouterGpt5Model: process.env.OPENROUTER_MODEL_GPT5 ?? "openai/gpt-5",
   openRouterGpt55Model: process.env.OPENROUTER_MODEL_GPT5_5 ?? "openai/gpt-5.5",
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? "",
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
+  appBaseUrl: process.env.APP_BASE_URL ?? "",
 };

@@ -15,8 +15,10 @@ sessions, and learner progress require the `0002_auth_parent_accounts` migration
      all of `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_USER`,
      `DATABASE_PASSWORD`, and `DATABASE_NAME=elunariq`.
    - `DATABASE_SSL`: `true` for TiDB Cloud's TLS connection.
-   - `CORS_ALLOWED_ORIGINS`: the exact production Vercel origin, plus any
-     development origins you use.
+   - `CORS_ALLOWED_ORIGINS`: the exact production frontend origin (scheme and
+     hostname only, no trailing slash), plus any development origins you use.
+     The current Vercel origin is allowlisted by the API; add any custom domain
+     or replacement Vercel deployment here.
 4. Apply migrations from the repository root in an environment that can reach
    the cluster:
 
@@ -42,3 +44,6 @@ sessions, and learner progress require the `0002_auth_parent_accounts` migration
 If authentication still reports that the database or migration is unavailable,
 check Render's server logs for the database connection or migration error. Never
 paste the TiDB connection URL or password into source control or public logs.
+An `ER_ACCESS_DENIED_ERROR` means TiDB rejected the configured user or password;
+re-copy the Node.js/MySQL credentials from the cluster and confirm that the user
+has access to `elunariq`. The local `.env` file does not configure Render.
