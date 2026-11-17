@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { invokeTutorWithFallback, modelFor, tutorChatInputSchema } from "../server/ai";
+import { invokeTutorWithFallback, isImageGenerationRequest, modelFor, tutorChatInputSchema } from "../server/ai";
 import { revealSlowly } from "../services/ai-service";
 
 afterEach(() => {
@@ -58,6 +58,13 @@ describe("tutor chat input", () => {
       .toEqual({ model: "gpt-5.5", tier: "high" });
     expect(modelFor({ mode: "direct", subject: "Biologie", question: "Analizează fotografia temei atașate." }))
       .toEqual({ model: "gpt-5-mini", tier: "low" });
+    expect(modelFor({ mode: "concept", subject: "Biologie", question: "Explică fotosinteza.", visualMode: true }))
+      .toEqual({ model: "gpt-5.5", tier: "high" });
+  });
+
+  it("recognizes natural Romanian requests for generated pictures", () => {
+    expect(isImageGenerationRequest("Poți să-mi faci o poză cu o celulă vegetală?")).toBe(true);
+    expect(isImageGenerationRequest("Analizează fotografia atașată.")).toBe(false);
     expect(modelFor({ mode: "guided", subject: "Matematică", question: "Cât este 2 + 2?" }))
       .toEqual({ model: "gpt-5-mini", tier: "low" });
   });

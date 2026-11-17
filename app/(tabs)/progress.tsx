@@ -1,7 +1,7 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { Badge, IconButton, ProgressBar, ScreenHeader, SectionHeading, SurfaceCard } from "@/components/bionis-ui";
 import { useColors } from "@/hooks/use-colors";
@@ -35,6 +35,11 @@ export default function ProgressScreen() {
 
   async function exportWeeklyRecap() {
     if (pdfBusy) return;
+    const printWindow = Platform.OS === "web" ? window.open("", "_blank") : undefined;
+    if (Platform.OS === "web" && !printWindow) {
+      setPdfNotice("Browserul a blocat fereastra pentru PDF. Permite ferestrele pop-up și încearcă din nou.");
+      return;
+    }
     setPdfBusy(true);
     try {
       await generateLearningPdf("Progresul tău · Elunariq", [
@@ -46,9 +51,10 @@ export default function ProgressScreen() {
             : "Nu ai salvat încă nicio lecție. Întrebările adresate tutorului sunt urmărite separat.",
         },
         { heading: "Următorul pas", body: "Continuă să înveți și explică primul pas cu propriile cuvinte." },
-      ]);
+      ], printWindow ?? undefined);
       setPdfNotice("Alege «Salvează ca PDF» în dialogul de tipărire.");
     } catch (error) {
+      printWindow?.close();
       const reason = error instanceof Error ? error.message : "Eroare necunoscută";
       setPdfNotice(`PDF-ul nu a putut fi pregătit: ${reason}`);
     } finally {

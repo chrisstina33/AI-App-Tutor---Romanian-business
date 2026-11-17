@@ -40,6 +40,7 @@ function renderMathInBody(value: string): string {
 export async function generateLearningPdf(
   title: string,
   sections: { heading: string; body: string; diagramSvg?: string; imageUrl?: string }[],
+  preparedWindow?: Window,
 ): Promise<boolean> {
   const body = sections
     .map(
@@ -61,7 +62,7 @@ export async function generateLearningPdf(
   </script></head><body><h1>${escapeHtml(title)}</h1>${body}<footer><p>Creat cu Elunariq · învață prin următorul pas</p></footer></body></html>`;
 
   if (Platform.OS === "web") {
-    const printWindow = window.open("", "_blank");
+    const printWindow = preparedWindow ?? window.open("", "_blank");
     if (!printWindow) throw new Error("Browserul a blocat fereastra pentru PDF. Permite ferestrele pop-up și încearcă din nou.");
 
     await new Promise<void>((resolve, reject) => {

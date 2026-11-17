@@ -164,6 +164,7 @@ export default function TutorScreen() {
         question: questionText,
         learnerLevel: learnerState.preferences?.level,
         explanationStyle: learnerState.preferences?.explanationStyle,
+        visualMode: agent === "Explicație vizuală" || learnerState.preferences?.explanationStyle === "Detaliat și vizual",
         messages: history.slice(-12),
         ...(upload ? {
           attachment: {
@@ -195,7 +196,11 @@ export default function TutorScreen() {
       };
       await addReply(live, requestedMode);
       if (requestedMode === "check" && live.analysis?.mastery === "demonstrated") {
-        await exportPdf([userMessage, pdfReply], effectiveSubject);
+        if (Platform.OS === "web") {
+          setNotice("Pasul este corect. Poți genera fișa PDF folosind butonul «Descarcă fișa PDF».");
+        } else {
+          await exportPdf([userMessage, pdfReply], effectiveSubject);
+        }
       }
       if (upload) {
         setUpload(null);
@@ -285,6 +290,11 @@ export default function TutorScreen() {
   }
   async function exportPdf(additionalMessages: TutorMessage[] = [], pdfSubject = subject) {
     if (pdfBusy) return;
+    const printWindow = Platform.OS === "web" ? window.open("", "_blank") : undefined;
+    if (Platform.OS === "web" && !printWindow) {
+      setNotice("Browserul a blocat fereastra pentru PDF. Permite ferestrele pop-up și încearcă din nou.");
+      return;
+    }
     setPdfBusy(true);
     try {
       const exportMessages = [...messages, ...additionalMessages];
@@ -292,6 +302,7 @@ export default function TutorScreen() {
         (message) => message.id !== "welcome" && message.text.trim(),
       );
       if (!lessonMessages.some((message) => message.role === "assistant")) {
+        printWindow?.close();
         setNotice("Trimite mai întâi o întrebare pentru a crea fișa de recapitulare.");
         return;
       }
@@ -301,6 +312,7 @@ export default function TutorScreen() {
         question: "Creează o fișă de recapitulare clară, utilă pentru învățare și aliniată programei școlare din România. Sintetizează noțiunile importante discutate, explică termenii necesari, include formulele și pașii de rezolvare relevanți și încheie cu trei întrebări scurte de verificare. Nu reda conversația și nu inventa noțiuni care nu au fost discutate sau nu sunt necesare.",
         learnerLevel: learnerState.preferences?.level,
         explanationStyle: learnerState.preferences?.explanationStyle,
+        visualMode: agent === "Explicație vizuală" || learnerState.preferences?.explanationStyle === "Detaliat și vizual",
         messages: lessonMessages.slice(-10).map((message) => ({
           role: message.role,
           text: message.text.slice(0, message.role === "user" ? 4000 : 8000),
@@ -355,9 +367,10 @@ export default function TutorScreen() {
           heading: "Următorul pas",
           body: "Răspunde la întrebările de verificare din sinteză, apoi încearcă un exercițiu fără să privești fișa.",
         },
-      ]);
+      ], printWindow ?? undefined);
       setNotice(Platform.OS === "web" ? "Alege «Salvează ca PDF» în dialogul de tipărire." : ro.pdfReady);
     } catch (error) {
+      printWindow?.close();
       const reason = error instanceof Error ? error.message : "Eroare necunoscută";
       setNotice(`Fișa PDF nu a putut fi pregătită: ${reason}`);
     } finally {
