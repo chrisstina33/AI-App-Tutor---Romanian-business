@@ -1,6 +1,4 @@
 import { z } from "zod";
-import { hasPremiumAccess } from "./billing";
-import { TRPCError } from "@trpc/server";
 import { tutorDiagramSchema, validateTutorDiagram, type TutorDiagram } from "../shared/tutor-diagram";
 import { invokeLLM, type Message } from "./_core/llm";
 import { generateImage } from "./_core/imageGeneration";
@@ -9,7 +7,7 @@ import { publicProcedure, router } from "./_core/trpc";
 
 const tutorModes = ["guided", "hint", "concept", "example", "check", "practice", "summary", "direct"] as const;
 const tutorAnalysisSchema = z.object({
-  subject: z.enum(["Matematică", "Fizică", "Chimie", "Limba română", "Biologie", "necunoscut"]),
+  subject: z.enum(["Matematică", "Fizică", "Chimie", "Limba română", "Biologie", "Informatică", "necunoscut"]),
   schoolLevel: z.enum(["gimnaziu", "liceu", "necunoscut"]),
   difficulty: z.enum(["ușor", "mediu", "dificil", "necunoscut"]),
   confidence: z.number().min(0).max(1),
@@ -177,7 +175,7 @@ export const assistantRouter = router({
     if ("error" in result) throw new Error(result.error);
     return { text: result.text, duration: result.duration, language: result.language };
   }),
-  chat: publicProcedure.input(tutorChatInputSchema).mutation(async ({ input, ctx }) => {
+  chat: publicProcedure.input(tutorChatInputSchema).mutation(async ({ input }) => {
     const selected = modelFor({
       mode: input.mode,
       question: input.question,
@@ -187,12 +185,6 @@ export const assistantRouter = router({
     });
     const imageRequested = isImageGenerationRequest(input.question);
     const visualMode = input.visualMode || input.explanationStyle === "Detaliat și vizual";
-    if (selected.tier !== "low" && !visualMode && !isVisualRequest(input.question) && (!ctx.user || !await hasPremiumAccess(ctx.user.id))) {
-      throw new TRPCError({
-        code: ctx.user ? "FORBIDDEN" : "UNAUTHORIZED",
-        message: "Explicațiile complexe și resursele vizuale sunt disponibile cu Premium. Abonamentul se activează din contul părintelui.",
-      });
-    }
     const history: Message[] = input.messages.map((message) => ({ role: message.role, content: message.text }));
     let userContent: Message["content"] = `Materia: ${input.subject}\nMod: ${input.mode}\nÎntrebarea elevului: ${input.question || "Analizează enunțul din fișierul atașat și ajută-mă cu primul pas."}`;
     if (input.attachment) {
@@ -220,6 +212,10 @@ export const assistantRouter = router({
           ...(visualMode ? [{
             role: "system" as const,
             content: "Modul de explicație vizuală este activ. Include o diagramă educațională simplă și relevantă când ajută înțelegerea; folosește categoria corectă și păstrează reprezentarea exactă conform regulilor de mai sus. Nu înlocui diagramele științifice cu ilustrații decorative.",
+          }] : []),
+          ...(input.subject === "Informatică" ? [{
+            role: "system" as const,
+            content: "Pentru Informatică, predă algoritmi și programare la nivelul școlar cerut: explică ideea înainte de cod, urmărește execuția pas cu pas pe exemple mici și clarifică variabilele, condițiile, buclele, funcțiile și structurile de date când apar. Respectă limbajul de programare cerut de elev; dacă nu este precizat și contează, întreabă înainte să scrii cod. Pentru depanare, indică întâi cauza și un indiciu, iar soluția completă numai când modul sau cererea o solicită. Folosește pseudocod ori o schemă simplă pentru vizualizarea algoritmilor când ajută.",
           }] : []),
           ...history,
           { role: "user", content: userContent },

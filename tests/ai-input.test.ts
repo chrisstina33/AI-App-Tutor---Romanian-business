@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { invokeTutorWithFallback, isImageGenerationRequest, modelFor, tutorChatInputSchema } from "../server/ai";
+import { invokeTutorWithFallback, isImageGenerationRequest, modelFor, parseTutorResponse, tutorChatInputSchema } from "../server/ai";
 import { revealSlowly } from "../services/ai-service";
 
 afterEach(() => {
@@ -67,6 +67,17 @@ describe("tutor chat input", () => {
     expect(isImageGenerationRequest("Analizează fotografia atașată.")).toBe(false);
     expect(modelFor({ mode: "guided", subject: "Matematică", question: "Cât este 2 + 2?" }))
       .toEqual({ model: "gpt-5-mini", tier: "low" });
+  });
+
+  it("accepts computer science as a tutor analysis subject", () => {
+    const response = parseTutorResponse(JSON.stringify({
+      text: "Un algoritm descrie pașii pentru rezolvarea unei probleme.",
+      analysis: { subject: "Informatică", schoolLevel: "liceu", difficulty: "ușor", confidence: 0.95, mastery: "unknown" },
+      diagram: null,
+      imagePrompt: null,
+    }));
+
+    expect(response.analysis.subject).toBe("Informatică");
   });
 
   it("routes specialist text problems to medium and molecular structure drawings to high", () => {

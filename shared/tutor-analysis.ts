@@ -1,5 +1,5 @@
 export type TutorAnalysis = {
-  subject: "Matematică" | "Fizică" | "Chimie" | "Limba română" | "Biologie" | "necunoscut";
+  subject: "Matematică" | "Fizică" | "Chimie" | "Limba română" | "Biologie" | "Informatică" | "necunoscut";
   schoolLevel: "gimnaziu" | "liceu" | "necunoscut";
   difficulty: "ușor" | "mediu" | "dificil" | "necunoscut";
   confidence: number;
