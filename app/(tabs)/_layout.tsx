@@ -10,9 +10,9 @@ export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const bottomPadding = Platform.OS === "web" ? 12 : Math.max(insets.bottom, 8);
   return <Tabs screenOptions={{ tabBarActiveTintColor: colors.tint, headerShown: false, tabBarButton: HapticTab, tabBarStyle: { paddingTop: 8, paddingBottom: bottomPadding, height: 56 + bottomPadding, backgroundColor: colors.background, borderTopColor: colors.border, borderTopWidth: 0.5 } }}>
-    <Tabs.Screen name="index" options={{ title: "Panou", tabBarIcon: ({ color, size }) => <MaterialIcons name="home-filled" color={color} size={size} /> }} />
-    <Tabs.Screen name="tutor" options={{ title: "Ghid", tabBarIcon: ({ color, size }) => <MaterialIcons name="auto-awesome" color={color} size={size} /> }} />
-    <Tabs.Screen name="progress" options={{ title: "Progres", tabBarIcon: ({ color, size }) => <MaterialIcons name="insights" color={color} size={size} /> }} />
-    <Tabs.Screen name="profile" options={{ title: "Profil", tabBarIcon: ({ color, size }) => <MaterialIcons name="person-outline" color={color} size={size} /> }} />
+    <Tabs.Screen name="index" options={{ title: "Panou", tabBarIcon: ({ color, size }) => <MaterialIcons name="home-filled" color={typeof color === "string" ? color : colors.tint} size={size} /> }} />
+    <Tabs.Screen name="tutor" options={{ title: "Ghid", tabBarIcon: ({ color, size }) => <MaterialIcons name="auto-awesome" color={typeof color === "string" ? color : colors.tint} size={size} /> }} />
+    <Tabs.Screen name="progress" options={{ title: "Progres", tabBarIcon: ({ color, size }) => <MaterialIcons name="insights" color={typeof color === "string" ? color : colors.tint} size={size} /> }} />
+    <Tabs.Screen name="profile" options={{ title: "Profil", tabBarIcon: ({ color, size }) => <MaterialIcons name="person-outline" color={typeof color === "string" ? color : colors.tint} size={size} /> }} />
   </Tabs>;
 }

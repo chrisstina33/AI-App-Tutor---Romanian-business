@@ -3,6 +3,7 @@ import { hasPremiumAccess } from "./billing";
 import { TRPCError } from "@trpc/server";
 import { tutorDiagramSchema, validateTutorDiagram, type TutorDiagram } from "../shared/tutor-diagram";
 import { invokeLLM, type Message } from "./_core/llm";
+import { generateImage } from "./_core/imageGeneration";
 import { transcribeAudioBase64 } from "./_core/voiceTranscription";
 import { publicProcedure, router } from "./_core/trpc";
 
@@ -18,6 +19,7 @@ const tutorResponseSchema = z.object({
   text: z.string().max(8000),
   analysis: tutorAnalysisSchema,
   diagram: tutorDiagramSchema.nullable(),
+  imagePrompt: z.string().max(1200).nullable(),
 }).strict();
 export const tutorChatInputSchema = z.object({
   subject: z.string().min(1).max(80),
@@ -50,13 +52,13 @@ function normalizeStructuredOutputSchema(schema: unknown): unknown {
 export const tutorResponseJsonSchema = normalizeStructuredOutputSchema(
   z.toJSONSchema(tutorResponseSchema, { target: "openai" }),
 ) as Record<string, unknown>;
-const systemPrompt = `Ești Elunariq, un tutor în limba română pentru elevi de liceu. Răspunde concret la întrebarea elevului și adaptează explicația la materia, enunț și modul cerut. Nu folosi răspunsuri-șablon și nu introduce ecuații sau formule decât dacă sunt relevante pentru problema elevului; nu folosi exemple generice precum a+b=c fără motiv.
+const systemPrompt = `Ești Elunariq, un tutor în limba română pentru elevi. Răspunde concret la întrebarea elevului și adaptează explicația la materie, enunț, nivelul identificabil și modul cerut. Respectă programa școlară din România (MEC) și vocabularul potrivit nivelului; nu pretinde că verifici o programă sau o clasă exactă pe care nu ai primit-o și cere clasa doar dacă schimbă semnificativ răspunsul. Nu folosi răspunsuri-șablon și nu introduce ecuații sau formule decât dacă sunt relevante pentru problema elevului; nu folosi exemple generice precum a+b=c fără motiv.
 
-Respectă modul cerut: în guided oferă un singur pas și o întrebare, fără soluția completă; în hint oferă un indiciu; în concept explică ideea cerută; în example oferă un exemplu asemănător; în check verifică pasul trimis; în practice creează un exercițiu; în summary recapitulează și propune un mini-quiz; în direct răspunde complet și clar.
+Respectă modul cerut: în guided oferă un singur pas de învățare, explicat suficient de clar, și o întrebare, fără soluția completă; în hint oferă un indiciu util; în concept explică ideea cu definiții și un exemplu potrivit; în example arată un exemplu asemănător rezolvat; în check verifică pasul trimis și explică de ce este corect sau ce trebuie corectat; în practice creează un exercițiu; în summary oferă o recapitulare structurată și un mini-quiz; în direct răspunde complet și clar. Evită răspunsurile telegrafice: include pașii de raționament relevanți, explică termenii noi și oferă suficiente detalii ca elevul să poată continua singur. Păstrează un singur pas în guided, dar explică acel pas complet.
 
-Folosește formule LaTeX doar când ajută la explicarea unei probleme matematice. Dacă informația lipsește, cere detaliul necesar în loc să inventezi un exemplu. Nu folosi emoji și nu pretinde că ai analizat fișiere fără conținut procesat.
+Folosește formule LaTeX când clarifică matematica sau chimia. La chimie, explică formulele și simbolurile, arată metoda de echilibrare pas cu pas când se cere și verifică numărul atomilor; nu sări direct la rezultat. Dacă informația lipsește, cere detaliul necesar în loc să inventezi un exemplu. Nu folosi emoji și nu pretinde că ai analizat fișiere fără conținut procesat.
 
-Returnează numai obiectul JSON cerut de schema structurată. Completează răspunsul pedagogic în text, analiza materiei în analysis și diagrama interpretată în diagram (sau null dacă nu este utilă ori nu poate fi dedusă cu încredere). Nu produce SVG, HTML, coordonate de desen pentru geometrie sau atomi de decor.
+Returnează numai obiectul JSON cerut de schema structurată. Completează răspunsul pedagogic în text, analiza materiei în analysis, diagrama interpretată în diagram (sau null dacă nu este utilă ori nu poate fi dedusă cu încredere) și imagePrompt (sau null când elevul nu a cerut explicit o imagine ilustrativă). Pentru o cerere explicită de imagine, oferă în imagePrompt o descriere concretă, educațională, potrivită nivelului și materiei; nu include text sau etichete în imagine decât dacă sunt esențiale. Pentru structuri chimice, reacții și desene geometrice exacte, folosește diagrama validată, nu înlocui informația exactă cu o imagine ilustrativă. Nu produce SVG, HTML, coordonate de desen pentru geometrie sau atomi de decor.
 
 Pentru categoria geometry, identifică figura, punctele/etichetele, segmentele, unghiurile, relațiile de paralelism/perpendicularitate/egalitate și cercurile cerute. Desenul trebuie să conțină numai figura și informațiile geometrice relevante pentru a o reprezenta; nu include calcule, formule de rezolvare, răspunsuri sau detalii fără legătură cu desenul. În câmpul constraints păstrează doar datele geometrice explicite din enunț care nu sunt deja reprezentate de etichete sau marcaje; pentru o figură cerută fără date suplimentare, lasă lista goală. Codifică lungimile și unghiurile cunoscute în etichetele elementelor relevante. Referințele trebuie să indice numai ID-uri declarate. Pentru paralelogram folosește figura parallelogram, exact patru puncte în ordinea conturului și cele patru laturi, fără diagonale dacă nu sunt cerute. Pentru triunghi, pătrat și dreptunghi folosește punctele și laturile în ordinea ciclului conturului. Alege intersecting_lines când sunt două drepte care se intersectează. Marchează un unghi ca drept numai când enunțul spune explicit că măsoară 90° ori că este perpendicular; nu deduce egalități sau perpendicularități doar din tipul figurii. Setează schematic=true când măsurile ori unghiurile exacte lipsesc; nu inventa valori și nu pretinde că desenul este la scară. Fă unghiul de la C explicit prin vertex, ray1 și ray2.
 
@@ -67,6 +69,14 @@ Folosește categoria schematic numai pentru explicații vizuale non-geometrice (
 În diagramă, include toate câmpurile cerute de schemă. Câmpurile textuale label fără etichetă trebuie să fie șirul gol. În analysis, evaluează exercițiul curent și nu deduce materia doar din selector. Pentru date insuficiente folosește necunoscut și confidence sub 0.8. Folosește mastery="demonstrated" numai în modul check, după o încercare reală și corectă cu raționament; în celelalte moduri folosește unknown. Nu inventa clasa exactă.`;
 
 const diagramRequestTerms = /deseneaz\w*|desen\w*|schiț\w*|schit\w*|diagram\w*|reprezint\w*|ilustreaz\w*|draw\w*|sketch\w*|illustrat\w*/iu;
+const imageRequestTerms = /\b(?:genere\w*|cree\w*|realize\w*|desene\w*|ilustre\w*|fă|fa|vreau|aș dori|as dori)\b[\s\S]{0,120}\b(?:imagin\w*|poz\w*|fotograf\w*|ilustra\w*|picture|photo)\b/iu;
+const otherVisualRequestTerms = /schemă|schema|resurs\w* vizual\w*|material\w* didactic\w* complex\w*|plan\w* de lecți\w*|formul\w* structur\w*|structur\w* molecular\w*/iu;
+
+function isVisualRequest(question: string): boolean {
+  return diagramRequestTerms.test(question)
+    || imageRequestTerms.test(question)
+    || otherVisualRequestTerms.test(question);
+}
 
 type TutorModel = "gpt-5-mini" | "gpt-5" | "gpt-5.5";
 type ModelTier = "low" | "medium" | "high";
@@ -78,8 +88,7 @@ export function modelFor(input: {
   subject?: string;
   hasAttachment?: boolean;
 }): SelectedModel {
-  const visualRequest = diagramRequestTerms.test(input.question)
-    || /schemă|schema|resurs\w* vizual\w*|material\w* didactic\w* complex\w*|plan\w* de lecți\w*|formul\w* structur\w*|structur\w* molecular\w*/iu.test(input.question);
+  const visualRequest = isVisualRequest(input.question);
   if (input.hasAttachment || visualRequest || input.question.length > 1800) {
     return { model: "gpt-5.5", tier: "high" };
   }
@@ -169,7 +178,8 @@ export const assistantRouter = router({
       subject: input.subject,
       hasAttachment: Boolean(input.attachment),
     });
-    if (selected.tier !== "low" && (!ctx.user || !await hasPremiumAccess(ctx.user.id))) {
+    const imageRequested = imageRequestTerms.test(input.question);
+    if (selected.tier !== "low" && !isVisualRequest(input.question) && (!ctx.user || !await hasPremiumAccess(ctx.user.id))) {
       throw new TRPCError({
         code: ctx.user ? "FORBIDDEN" : "UNAUTHORIZED",
         message: "Explicațiile complexe și resursele vizuale sunt disponibile cu Premium. Abonamentul se activează din contul părintelui.",
@@ -198,7 +208,7 @@ export const assistantRouter = router({
       const result = await invokeLLM({
         model,
         messages: [
-          { role: "system", content: `${systemPrompt}\n\nGenerează diagramă numai dacă întrebarea curentă o cere explicit sau dacă este esențială pentru explicația curentă. Folosește doar enunțul curent pentru a decide ce să desenezi; nu copia și nu repeta diagrame din mesajele anterioare decât dacă elevul cere explicit să revii la ele. Pentru vectori folosește săgeți orientate și etichete de mărime/direcție cerute. În fizică, desenele de mecanică, termodinamică, electricitate, optică, oscilații și unde trebuie să arate numai elementele fizice relevante, cu convențiile și sensurile corecte; nu adăuga calcule în desen. Folosește marcajul de unghi drept numai pentru 90° explicit. La formule moleculare/structurale folosește diagrama chemistry. Pentru ecuații stoechiometrice folosește diagrama reaction și verifică numărul fiecărui atom pe ambele părți; dacă nu poți verifica ecuația, setează diagram=null.\n\nIdentifică nivelul școlar potrivit din cerință și rezolvă și probleme de gimnaziu, cu programa și vocabularul acelui nivel. Dacă nu se poate deduce clasa, nu o inventa. Când este util, menționează pe scurt nivelul orientativ și dificultatea. Nivelul de experiență declarat de elev este „${input.learnerLevel ?? "Îmi formez încrederea"}”, iar stilul preferat este „${input.explanationStyle ?? "Scurt și clar"}”. Explică în pași mici, definește termenii noi și verifică înțelegerea înainte de a continua. În modul ghidat oferă un singur pas odată, cu o întrebare clară. Dacă materia selectată pare să nu corespundă cerinței, identifică materia potrivită și adaptează explicația fără să schimbi răspunsul pe baza unei presupuneri nesigure.` },
+          { role: "system", content: `${systemPrompt}\n\nGenerează diagramă numai dacă întrebarea curentă o cere explicit sau dacă este esențială pentru explicația curentă. Folosește doar enunțul curent pentru a decide ce să desenezi; nu copia și nu repeta diagrame din mesajele anterioare decât dacă elevul cere explicit să revii la ele. Pentru vectori folosește săgeți orientate și etichete de mărime/direcție cerute. În fizică, desenele de mecanică, termodinamică, electricitate, optică, oscilații și unde trebuie să arate numai elementele fizice relevante, cu convențiile și sensurile corecte; nu adăuga calcule în desen. Folosește marcajul de unghi drept numai pentru 90° explicit. La formule moleculare/structurale folosește diagrama chemistry. Pentru ecuații stoechiometrice folosește diagrama reaction și verifică numărul fiecărui atom pe ambele părți; dacă nu poți verifica ecuația, setează diagram=null.\n\nIdentifică nivelul școlar potrivit din cerință și rezolvă și probleme de gimnaziu, cu programa și vocabularul acelui nivel. Dacă nu se poate deduce clasa, nu o inventa. Când este util, menționează nivelul orientativ și dificultatea. Nivelul de experiență declarat de elev este „${input.learnerLevel ?? "Îmi formez încrederea"}”, iar stilul preferat este „${input.explanationStyle ?? "Scurt și clar"}”; chiar și când se preferă concizia, răspunsul trebuie să conțină explicația necesară, nu doar rezultatul. Explică în pași mici, definește termenii noi și verifică înțelegerea înainte de a continua. În modul ghidat oferă un singur pas odată, cu o întrebare clară. Dacă materia selectată pare să nu corespundă cerinței, identifică materia potrivită și adaptează explicația fără să schimbi răspunsul pe baza unei presupuneri nesigure.` },
           ...history,
           { role: "user", content: userContent },
         ],
@@ -210,8 +220,8 @@ export const assistantRouter = router({
             strict: true,
           },
         },
-        maxCompletionTokens: model === "gpt-5.5" ? 1700 : model === "gpt-5" ? 1400 : 1100,
-        reasoning: model === "gpt-5-mini" ? { effort: "minimal" } : { effort: model === "gpt-5.5" ? "high" : "medium" },
+        maxCompletionTokens: model === "gpt-5.5" ? 3000 : model === "gpt-5" ? 2200 : 1500,
+        reasoning: model === "gpt-5-mini" ? { effort: "low" } : { effort: model === "gpt-5.5" ? "high" : "medium" },
       });
       const rawText = contentToText(result.choices?.[0]?.message?.content);
       const parsedResponse = parseTutorResponse(rawText);
@@ -228,12 +238,30 @@ export const assistantRouter = router({
       return { ...parsedResponse, diagram: subjectDiagram ?? null };
     });
     const tutorResponse = modelResult.result;
+    let imageUrl: string | undefined;
+    let imageError: string | undefined;
+    if (imageRequested) {
+      if (!tutorResponse.imagePrompt?.trim()) {
+        imageError = "Nu am putut pregăti descrierea imaginii. Încearcă să formulezi cererea mai concret.";
+      } else {
+        try {
+          const generatedImage = await generateImage({ prompt: tutorResponse.imagePrompt });
+          if (!generatedImage.url) throw new Error("Image service returned no URL");
+          imageUrl = generatedImage.url;
+        } catch (error) {
+          console.error("[Tutor] Requested image generation failed", error instanceof Error ? error.message : "unknown error");
+          imageError = "Răspunsul este gata, dar imaginea nu a putut fi generată acum. Încearcă din nou mai târziu.";
+        }
+      }
+    }
     return {
       provider: "live" as const,
       text: tutorResponse.text,
       model: modelResult.model,
       tier: modelResult.tier,
       ...(tutorResponse.diagram ? { diagram: tutorResponse.diagram } : {}),
+      ...(imageUrl ? { imageUrl } : {}),
+      ...(imageError ? { imageError } : {}),
       analysis: tutorResponse.analysis,
     };
   }),

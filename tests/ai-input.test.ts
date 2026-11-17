@@ -54,6 +54,10 @@ describe("tutor chat input", () => {
   it("routes explicit visual requests to high complexity and simple questions to low", () => {
     expect(modelFor({ mode: "guided", subject: "Matematică", question: "Desenează un paralelogram." }))
       .toEqual({ model: "gpt-5.5", tier: "high" });
+    expect(modelFor({ mode: "direct", subject: "Biologie", question: "Generează o imagine a unei celule vegetale." }))
+      .toEqual({ model: "gpt-5.5", tier: "high" });
+    expect(modelFor({ mode: "direct", subject: "Biologie", question: "Analizează fotografia temei atașate." }))
+      .toEqual({ model: "gpt-5-mini", tier: "low" });
     expect(modelFor({ mode: "guided", subject: "Matematică", question: "Cât este 2 + 2?" }))
       .toEqual({ model: "gpt-5-mini", tier: "low" });
   });

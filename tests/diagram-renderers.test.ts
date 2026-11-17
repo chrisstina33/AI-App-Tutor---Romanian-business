@@ -384,6 +384,7 @@ describe("structured tutor responses", () => {
     const response = parseTutorResponse(JSON.stringify({
       text: "Verifică numărul legăturilor carbonului.",
       analysis: { subject: "Chimie", schoolLevel: "liceu", difficulty: "mediu", confidence: 0.9, mastery: "unknown" },
+      imagePrompt: null,
       diagram: {
         category: "chemistry",
         caption: "Structură",

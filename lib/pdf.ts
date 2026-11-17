@@ -39,12 +39,12 @@ function renderMathInBody(value: string): string {
 
 export async function generateLearningPdf(
   title: string,
-  sections: { heading: string; body: string; diagramSvg?: string }[],
+  sections: { heading: string; body: string; diagramSvg?: string; imageUrl?: string }[],
 ): Promise<boolean> {
   const body = sections
     .map(
       (section) =>
-        `<section><h2>${escapeHtml(section.heading)}</h2><div>${renderMathInBody(section.body)}</div>${section.diagramSvg ? `<div class="diagram">${section.diagramSvg}</div>` : ""}</section>`,
+        `<section><h2>${escapeHtml(section.heading)}</h2><div>${renderMathInBody(section.body)}</div>${section.imageUrl ? `<div class="diagram"><img src="${escapeHtml(section.imageUrl)}" alt="${escapeHtml(section.heading)}" /></div>` : ""}${section.diagramSvg ? `<div class="diagram">${section.diagramSvg}</div>` : ""}</section>`,
     )
     .join("");
   const html = `<!doctype html><html lang="ro"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>
@@ -54,7 +54,7 @@ export async function generateLearningPdf(
     section{page-break-inside:avoid;margin-bottom:18px}.math-inline,.math-display{color:#4737a1;font-family:Georgia,serif;font-style:italic}
     .math-display{margin:12px 0;text-align:center}.math-source{display:none}.math-fallback{display:inline}.math-display .math-fallback{display:block;font-size:16pt;padding:5px}
     .math-ready .math-source{display:inline}.math-ready .math-fallback{display:none}.math-ready .math-display .math-source{display:block}
-    .math-ready mjx-container{font-size:112%!important;color:#4737a1}.diagram{max-width:420px;margin:14px auto;page-break-inside:avoid}.diagram svg{width:100%;height:auto}footer{margin-top:34px;color:#707087;font-size:9pt;border-top:1px solid #dedbea;padding-top:10px}
+    .math-ready mjx-container{font-size:112%!important;color:#4737a1}.diagram{max-width:420px;margin:14px auto;page-break-inside:avoid}.diagram svg,.diagram img{width:100%;height:auto}.diagram img{display:block;object-fit:contain}footer{margin-top:34px;color:#707087;font-size:9pt;border-top:1px solid #dedbea;padding-top:10px}
   </style><script>window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],displayMath:[["\\\\[","\\\\]"]]},options:{enableMenu:false}};</script>
   <script defer src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-chtml.js"></script><script>
     window.addEventListener("load",function(){if(window.MathJax&&window.MathJax.typesetPromise){window.MathJax.typesetPromise().then(function(){document.documentElement.classList.add("math-ready")}).catch(function(){})}});

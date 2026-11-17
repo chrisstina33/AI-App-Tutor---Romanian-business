@@ -14,6 +14,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  type ScrollViewInstance,
   StyleSheet,
   Text,
   TextInput,
@@ -88,7 +89,7 @@ export default function TutorScreen() {
   const [showVoiceDisclosure, setShowVoiceDisclosure] = useState(false);
   const [recording, setRecording] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const assistantMutation = trpc.assistant.chat.useMutation();
   const voiceMutation = trpc.assistant.transcribe.useMutation();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -111,6 +112,8 @@ export default function TutorScreen() {
       provider: "live";
       model?: string;
       diagram?: TutorDiagram;
+      imageUrl?: string;
+      imageError?: string;
       analysis?: TutorMessage["analysis"];
     },
     requestedMode: TutorMode,
@@ -124,6 +127,8 @@ export default function TutorScreen() {
       provider: reply.provider,
       model: reply.model,
       ...(reply.diagram ? { diagram: reply.diagram } : {}),
+      ...(reply.imageUrl ? { imageUrl: reply.imageUrl } : {}),
+      ...(reply.imageError ? { imageError: reply.imageError } : {}),
       ...(reply.analysis ? { analysis: reply.analysis } : {}),
       createdAt: currentTimestamp(),
     };
@@ -178,17 +183,19 @@ export default function TutorScreen() {
       const pdfReply: TutorMessage = {
         id: createMessageId("mastery-pdf"),
         role: "assistant",
-        text: `Enunțul elevului: ${questionText}\n\n${live.text}`,
+        text: live.text,
         mode: requestedMode,
         provider: live.provider,
         model: live.model,
         ...(live.diagram ? { diagram: live.diagram } : {}),
+        ...(live.imageUrl ? { imageUrl: live.imageUrl } : {}),
+        ...(live.imageError ? { imageError: live.imageError } : {}),
         analysis: live.analysis,
         createdAt: currentTimestamp(),
       };
       await addReply(live, requestedMode);
       if (requestedMode === "check" && live.analysis?.mastery === "demonstrated") {
-        await exportPdf([pdfReply], effectiveSubject);
+        await exportPdf([userMessage, pdfReply], effectiveSubject);
       }
       if (upload) {
         setUpload(null);
@@ -281,22 +288,31 @@ export default function TutorScreen() {
     setPdfBusy(true);
     try {
       const exportMessages = [...messages, ...additionalMessages];
-      const tutorNotes = exportMessages
-        .filter(
-          (message) => message.role === "assistant" && message.id !== "welcome",
-        )
-        .map((message) => message.text.trim())
-        .filter(Boolean);
-      const lessonText = tutorNotes.join("\n\n");
+      const lessonMessages = exportMessages.filter(
+        (message) => message.id !== "welcome" && message.text.trim(),
+      );
+      if (!lessonMessages.some((message) => message.role === "assistant")) {
+        setNotice("Trimite mai întâi o întrebare pentru a crea fișa de recapitulare.");
+        return;
+      }
+      const studyGuide = await assistantMutation.mutateAsync({
+        subject: pdfSubject,
+        mode: "summary",
+        question: "Creează o fișă de recapitulare clară, utilă pentru învățare și aliniată programei școlare din România. Sintetizează noțiunile importante discutate, explică termenii necesari, include formulele și pașii de rezolvare relevanți și încheie cu trei întrebări scurte de verificare. Nu reda conversația și nu inventa noțiuni care nu au fost discutate sau nu sunt necesare.",
+        learnerLevel: learnerState.preferences?.level,
+        explanationStyle: learnerState.preferences?.explanationStyle,
+        messages: lessonMessages.slice(-10).map((message) => ({
+          role: message.role,
+          text: message.text.slice(0, message.role === "user" ? 4000 : 8000),
+        })),
+      });
       const formulas =
-        lessonText.match(/\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\]/g) ?? [];
+        studyGuide.text.match(/\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\]/g) ?? [];
       await generateLearningPdf(`Fișă de recapitulare · ${pdfSubject}`, [
         { heading: "Materia", body: pdfSubject },
         {
-          heading: "Noțiuni teoretice discutate",
-          body:
-            lessonText ||
-            "Trimite o întrebare și cere o explicație de concept pentru a construi fișa acestei lecții.",
+          heading: "Sinteză pentru recapitulare",
+          body: studyGuide.text,
         },
         {
           heading: "Formule importante",
@@ -304,7 +320,7 @@ export default function TutorScreen() {
             ? formulas.join("\n\n")
             : "În această sesiune nu a fost folosită o formulă.",
         },
-        ...exportMessages.filter((message) => message.role === "assistant" && message.diagram).map((message) => ({
+        ...exportMessages.filter((message) => message.role === "assistant" && message.diagram).slice(-3).map((message) => ({
           heading: message.diagram!.caption,
           body: message.diagram!.category === "schematic"
             ? message.diagram!.steps.map((step) => `${step.calculation}\n${step.meaning}`).join("\n\n")
@@ -316,9 +332,28 @@ export default function TutorScreen() {
               ].join("\n\n"),
           diagramSvg: diagramSvg(message.diagram!),
         })),
+        ...exportMessages.filter((message) => message.role === "assistant" && message.imageUrl).slice(-1).map((message) => ({
+          heading: "Imagine educațională",
+          body: "Imagine generată pentru tema discutată.",
+          imageUrl: /^https?:\/\//i.test(message.imageUrl!)
+            ? message.imageUrl!
+            : `${getApiBaseUrl()}${message.imageUrl!}`,
+        })),
+        ...(studyGuide.diagram ? [{
+          heading: studyGuide.diagram.caption,
+          body: studyGuide.diagram.category === "schematic"
+            ? studyGuide.diagram.steps.map((step) => `${step.calculation}\n${step.meaning}`).join("\n\n")
+            : studyGuide.diagram.category === "reaction"
+              ? `Reactanți: ${studyGuide.diagram.reactants.map((item) => `${item.coefficient > 1 ? `${item.coefficient} ` : ""}${item.formula}${item.state ? ` (${item.state})` : ""}`).join(" + ")}\nProduși: ${studyGuide.diagram.products.map((item) => `${item.coefficient > 1 ? `${item.coefficient} ` : ""}${item.formula}${item.state ? ` (${item.state})` : ""}`).join(" + ")}${studyGuide.diagram.conditions ? `\nCondiții: ${studyGuide.diagram.conditions}` : ""}`
+              : [
+                  studyGuide.diagram.schematic ? "Reprezentare schematică, nu este la scară." : "Structură și relații interpretate din enunț.",
+                  ...studyGuide.diagram.constraints,
+                ].join("\n\n"),
+          diagramSvg: diagramSvg(studyGuide.diagram),
+        }] : []),
         {
           heading: "Următorul pas",
-          body: "Încearcă să explici ideea cu propriile cuvinte, apoi rezolvă un exercițiu fără să privești fișa.",
+          body: "Răspunde la întrebările de verificare din sinteză, apoi încearcă un exercițiu fără să privești fișa.",
         },
       ]);
       setNotice(Platform.OS === "web" ? "Alege «Salvează ca PDF» în dialogul de tipărire." : ro.pdfReady);

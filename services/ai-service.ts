@@ -2,9 +2,9 @@ import type { TutorAnalysis } from "@/shared/tutor-analysis";
 import type { TutorDiagram } from "@/shared/tutor-diagram";
 
 export type TutorMode = "guided" | "hint" | "concept" | "example" | "check" | "practice" | "summary" | "direct";
-export type TutorMessage = { id: string; role: "user" | "assistant"; text: string; mode?: TutorMode; createdAt: number; provider?: "live"; model?: string; diagram?: TutorDiagram; analysis?: TutorAnalysis };
+export type TutorMessage = { id: string; role: "user" | "assistant"; text: string; mode?: TutorMode; createdAt: number; provider?: "live"; model?: string; diagram?: TutorDiagram; imageUrl?: string; imageError?: string; analysis?: TutorAnalysis };
 export type TutorInput = { question: string; subject: string; mode: TutorMode; history: Array<Pick<TutorMessage, "role" | "text">> };
-export type TutorReply = { text: string; provider: "live"; model?: string };
+export type TutorReply = { text: string; provider: "live"; model?: string; imageUrl?: string; imageError?: string };
 
 export const TUTOR_MODES: Array<{ id: TutorMode; label: string; icon: string; tone: string }> = [
   { id: "hint", label: "Dă-mi un indiciu", icon: "lightbulb", tone: "#8A72FF" },

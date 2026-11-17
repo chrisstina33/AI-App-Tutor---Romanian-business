@@ -4,6 +4,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   Platform,
   StyleSheet,
@@ -15,6 +16,7 @@ import type { PendingUpload } from "@/lib/storage";
 import { formatLatexForDisplay, splitMathSegments } from "@/lib/math-format";
 import type { TutorMessage } from "@/services/ai-service";
 import { LearningDiagram } from "@/components/learning-diagram";
+import { getApiBaseUrl } from "@/constants/api";
 
 const ALLOWED_MIME_TYPES = [
   "application/pdf",
@@ -95,6 +97,23 @@ export function TutorMessageCard({ message }: { message: TutorMessage }) {
             </Text>
           );
         })}
+        {assistant && message.imageUrl ? (
+          <Image
+            accessibilityLabel="Imagine educațională generată"
+            source={{
+              uri: /^https?:\/\//i.test(message.imageUrl)
+                ? message.imageUrl
+                : `${getApiBaseUrl()}${message.imageUrl}`,
+            }}
+            resizeMode="contain"
+            style={styles.generatedImage}
+          />
+        ) : null}
+        {assistant && message.imageError ? (
+          <Text style={[styles.uploadError, { color: colors.error }]}>
+            {message.imageError}
+          </Text>
+        ) : null}
         {assistant && message.diagram ? <LearningDiagram diagram={message.diagram} /> : null}
       </View>
     </View>
@@ -294,6 +313,13 @@ const styles = StyleSheet.create({
   messageAuthor: { fontSize: 12, fontWeight: "800" },
   analysisMeta: { fontSize: 10, lineHeight: 14, textTransform: "capitalize" },
   messageText: { fontSize: 14, lineHeight: 21 },
+  generatedImage: {
+    width: "100%",
+    height: 240,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    marginTop: 6,
+  },
   messageHeading: { fontWeight: "800", marginTop: 2 },
   messageBullet: { paddingLeft: 4 },
   formula: {
