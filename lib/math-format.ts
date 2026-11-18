@@ -104,6 +104,7 @@ export function formatLatexForDisplay(input: string): string {
 
   for (let pass = 0; pass < 4; pass += 1) {
     value = value
+      .replace(/\\begin\{(?:aligned|array|cases|split)\}|\\end\{(?:aligned|array|cases|split)\}/g, "")
       .replace(/\\(?:dfrac|tfrac|frac)\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, "$1⁄$2")
       .replace(/\\sqrt\s*\{([^{}]*)\}/g, "√$1")
       .replace(/\\(?:text|mathrm|mathbf|operatorname)\s*\{([^{}]*)\}/g, "$1")
@@ -112,7 +113,9 @@ export function formatLatexForDisplay(input: string): string {
       )
       .replace(/_\{([^{}]*)\}/g, (_match, group: string) =>
         scriptCharacters(group, SUBSCRIPTS),
-      );
+      )
+      .replace(/\\\\/g, "; ")
+      .replace(/&/g, " ");
   }
 
   value = value
@@ -126,6 +129,7 @@ export function formatLatexForDisplay(input: string): string {
       /\\([a-zA-Z]+)/g,
       (_match, command: string) => COMMANDS[command] ?? "",
     )
+    .replace(/(?<=[\w)}])\/(?=[\w({])/g, "⁄")
     .replace(/[{}]/g, "")
     .replace(/\\/g, "")
     .replace(/\s+/g, " ")

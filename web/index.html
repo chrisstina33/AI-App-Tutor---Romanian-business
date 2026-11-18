@@ -7,6 +7,7 @@
     <meta name="description" content="Elunariq explică materiile școlare pas cu pas, în limba română." />
     <title>Elunariq — Învață următorul pas</title>
     <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./styles.css" />
     <style id="elunariq-styles">
 
 /* Theme transition and readable light mode overrides */
@@ -66,7 +67,7 @@ body.light .preview-formula span{color:#9a4d16}
         <div class="hero-copy">
           <p class="eyebrow">ÎNVĂȚARE CLARĂ, ÎN ROMÂNĂ</p>
           <h1>Nu primi doar răspunsul. Înțelege pasul următor.</h1>
-          <p class="hero-lede">Elunariq te ajută la matematică, fizică, chimie, biologie și română. Îți explică pe scurt, îți pune o întrebare și așteaptă să încerci.</p>
+          <p class="hero-lede">Elunariq te ajută la matematică, fizică, chimie, biologie, română, informatică, istorie, geografie și engleză. Îți explică pe scurt, îți pune o întrebare și așteaptă să încerci.</p>
           <div class="hero-actions"><button class="primary-button" data-action="focus-tutor"><i data-lucide="message-circle"></i> Vorbește cu tutorul</button><a class="quiet-link" href="#subjects">Alege o materie <i data-lucide="arrow-down"></i></a></div>
           <p class="microcopy"><i data-lucide="shield-check"></i> Modul demonstrativ nu inventează analizarea fișierelor.</p>
         </div>
@@ -87,9 +88,10 @@ body.light .preview-formula span{color:#9a4d16}
         <div class="section-heading"><div><p class="eyebrow">TUTOR ELUNARIQ</p><h2>Începi cu întrebarea ta.</h2></div><span class="glass-chip">Un pas · o întrebare</span></div>
         <div class="tutor-layout">
           <div class="tutor-card glass-panel glass-panel-strong">
-            <div class="tutor-toolbar"><label for="tutor-subject">Materie</label><select id="tutor-subject" class="glass-chip"><option>Matematică</option><option>Fizică</option><option>Chimie</option><option>Biologie</option><option>Română</option></select></div>
+            <div class="tutor-toolbar"><label for="tutor-subject">Materie</label><select id="tutor-subject" class="glass-chip"><option>Matematică</option><option>Fizică</option><option>Chimie</option><option>Biologie</option><option>Română</option><option>Informatică</option><option>Istorie</option><option>Geografie</option><option>Engleză</option></select></div>
             <div id="chat-log" class="chat-log" aria-live="polite"><div class="chat-message assistant"><span class="message-label">Elunariq</span><p>Scrie problema sau spune ce ai încercat. Îți voi da un singur pas și apoi te întreb ce observi.</p></div></div>
-            <form id="chat-form" class="chat-composer"><label class="sr-only" for="chat-input">Întrebarea ta</label><input id="chat-input" autocomplete="off" placeholder="Scrie întrebarea ta…" /><button class="send-button" type="submit" aria-label="Trimite întrebarea"><i data-lucide="send"></i></button></form>
+            <form id="chat-form" class="chat-composer"><label class="sr-only" for="chat-input">Întrebarea ta</label><input id="chat-input" autocomplete="off" placeholder="Scrie pasul tău sau atașează exercițiul…" /><button class="send-button" type="submit" aria-label="Trimite întrebarea"><i data-lucide="send"></i></button></form>
+            <p class="chat-example">Exemplu: „Am ajuns la 2x = 8. E corect dacă împart ambele părți la 2?”</p>
             <div class="quick-prompts"><button class="glass-chip" data-prompt="Dă-mi un indiciu, fără soluția completă.">Dă-mi un indiciu</button><button class="glass-chip" data-prompt="Explică ideea principală și pune-mi o întrebare.">Explică ideea</button><button class="glass-chip" data-prompt="Dă-mi un exercițiu asemănător.">Exersează</button></div>
           </div>
           <aside class="tutor-note glass-panel"><i data-lucide="graduation-cap"></i><h3>Înveți activ</h3><p>Răspunsul complet rămâne ascuns până când îl ceri. Asta lasă loc pentru gândire, nu pentru copiere.</p><div class="note-rule"></div><p class="muted">Formulele sunt păstrate în notație LaTeX, de exemplu \(a+b=c\).</p></aside>
@@ -128,6 +130,10 @@ const subjects = [
   { name: "Chimie", description: "Reacții și legături explicate.", icon: "flask-conical" },
   { name: "Biologie", description: "Procese, sisteme și concepte.", icon: "leaf" },
   { name: "Română", description: "Texte, idei și argumentare.", icon: "book-open" },
+  { name: "Informatică", description: "Algoritmi și programare.", icon: "code-xml" },
+  { name: "Istorie", description: "Epoci, evenimente și surse istorice.", icon: "landmark" },
+  { name: "Geografie", description: "Hărți, regiuni și fenomene geografice.", icon: "globe-2" },
+  { name: "Engleză", description: "Gramatică, vocabular și comunicare.", icon: "languages" },
 ];
 const demoResponses = {
   hint: "Privește operația care este cel mai departe de necunoscută. Aplică operația inversă pe ambele părți. Ce obții după acest singur pas?",
@@ -159,7 +165,7 @@ function renderProgress() {
 }
 function addMessage(role, text) { const message = document.createElement("div"); message.className = `chat-message ${role}`; if (role === "assistant") { message.innerHTML = `<span class="message-label">Elunariq</span><p></p>`; message.querySelector("p").textContent = text; } else { message.innerHTML = `<p>${escapeHtml(text)}</p>`; } $("#chat-log").appendChild(message); message.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "nearest" }); return message; }
 function replyFor(text) { const normalized = text.toLocaleLowerCase("ro"); if (normalized.includes("indiciu") || normalized.includes("hint")) return demoResponses.hint; if (normalized.includes("idee") || normalized.includes("concept")) return demoResponses.concept; if (normalized.includes("exerci") || normalized.includes("practic")) return demoResponses.practice; return demoResponses.default; }
-function revealReply(node, text) { const target = node.querySelector("p"); if (reduceMotion) { target.textContent = text; return; } const words = text.split(" "); let index = 0; const timer = window.setInterval(() => { target.textContent += `${index ? " " : ""}${words[index]}`; index += 1; if (index >= words.length) window.clearInterval(timer); }, 34); }
+function revealReply(node, text) { node.querySelector("p").textContent = text; }
 function submitTutor(text) { const value = text.trim(); if (!value) return; addMessage("user", value); $("#chat-input").value = ""; const pending = addMessage("assistant", "Scriu următorul pas…"); pending.classList.add("pending"); window.setTimeout(() => { pending.classList.remove("pending"); revealReply(pending, replyFor(value)); }, reduceMotion ? 0 : 520); }
 function toggleTheme() { document.body.classList.toggle("light"); const icon = $("[data-action=theme] i"); if (icon) icon.setAttribute("data-lucide", document.body.classList.contains("light") ? "moon" : "sun"); refreshIcons(); saveState(); showToast(document.body.classList.contains("light") ? "Tema luminoasă este activă." : "Tema întunecată este activă."); }
 function startTest() { $("#test-feedback").textContent = ""; $("#test-dialog").showModal(); refreshIcons(); }

@@ -1,14 +1,14 @@
 import { z } from "zod";
 import { tutorDiagramSchema, validateTutorDiagram, type TutorDiagram } from "../shared/tutor-diagram";
-import { invokeLLM, type Message } from "./_core/llm";
+import { invokeLLM, type Message, type MessageContent } from "./_core/llm";
 import { generateImage } from "./_core/imageGeneration";
 import { transcribeAudioBase64 } from "./_core/voiceTranscription";
 import { publicProcedure, router } from "./_core/trpc";
 
 const tutorModes = ["guided", "hint", "concept", "example", "check", "practice", "summary", "direct"] as const;
 const tutorAnalysisSchema = z.object({
-  subject: z.enum(["Matematică", "Fizică", "Chimie", "Limba română", "Biologie", "Informatică", "necunoscut"]),
-  schoolLevel: z.enum(["gimnaziu", "liceu", "necunoscut"]),
+  subject: z.enum(["Matematică", "Fizică", "Chimie", "Limba română", "Biologie", "Informatică", "Istorie", "Geografie", "Limba engleză", "necunoscut"]),
+  schoolLevel: z.enum(["gimnaziu", "liceu", "olimpiada", "necunoscut"]),
   difficulty: z.enum(["ușor", "mediu", "dificil", "necunoscut"]),
   confidence: z.number().min(0).max(1),
   mastery: z.enum(["demonstrated", "not_yet", "unknown"]),
@@ -19,24 +19,40 @@ const tutorResponseSchema = z.object({
   diagram: tutorDiagramSchema.nullable(),
   imagePrompt: z.string().max(1200).nullable(),
 }).strict();
+const tutorAttachmentSchema = z.object({
+  name: z.string().max(180),
+  mimeType: z.enum(["image/png", "image/jpeg", "application/pdf", "text/plain"]),
+  base64: z.string().max(15_000_000),
+});
 export const tutorChatInputSchema = z.object({
   subject: z.string().min(1).max(80),
   mode: z.enum(tutorModes),
   question: z.string().max(4000),
   learnerLevel: z.enum(["La început", "Îmi formez încrederea", "Pregătit pentru examen"]).optional(),
+  schoolGrade: z.enum(["Nu o precizez", "Clasa a V-a", "Clasa a VI-a", "Clasa a VII-a", "Clasa a VIII-a", "Clasa a IX-a", "Clasa a X-a", "Clasa a XI-a", "Clasa a XII-a"]).optional(),
   explanationStyle: z.enum(["Scurt și clar", "Detaliat și vizual", "Întrebări socratice"]).optional(),
   visualMode: z.boolean().optional(),
   messages: z.array(z.discriminatedUnion("role", [
     z.object({ role: z.literal("user"), text: z.string().max(4000) }),
     z.object({ role: z.literal("assistant"), text: z.string().max(8000) }),
   ])).max(20),
-  attachment: z.object({
-    name: z.string().max(180),
-    mimeType: z.enum(["image/png", "image/jpeg", "application/pdf", "text/plain"]),
-    base64: z.string().max(15_000_000),
-  }).optional(),
-}).refine((input) => Boolean(input.question.trim()) || Boolean(input.attachment), {
-  message: "Scrie o întrebare sau atașează tema.",
+  attachment: tutorAttachmentSchema.optional(),
+  attachments: z.array(tutorAttachmentSchema).optional(),
+}).superRefine((input, context) => {
+  const attachments = [
+    ...(input.attachment ? [input.attachment] : []),
+    ...(input.attachments ?? []),
+  ];
+  if (!input.question.trim() && !attachments.length) {
+    context.addIssue({ code: "custom", message: "Scrie o întrebare sau atașează tema." });
+  }
+  if (attachments.reduce((total, attachment) => total + attachment.base64.length, 0) > 40_000_000) {
+    context.addIssue({
+      code: "custom",
+      path: ["attachments"],
+      message: "Atașamentele depășesc limita tehnică pentru o singură cerere. Trimite mai puține fișiere odată.",
+    });
+  }
 });
 
 function normalizeStructuredOutputSchema(schema: unknown): unknown {
@@ -51,9 +67,9 @@ function normalizeStructuredOutputSchema(schema: unknown): unknown {
 export const tutorResponseJsonSchema = normalizeStructuredOutputSchema(
   z.toJSONSchema(tutorResponseSchema, { target: "openai" }),
 ) as Record<string, unknown>;
-const systemPrompt = `Ești Elunariq, un tutor în limba română pentru elevi. Răspunde concret la întrebarea elevului și adaptează explicația la materie, enunț, nivelul identificabil și modul cerut. Respectă programa școlară din România (MEC) și vocabularul potrivit nivelului; nu pretinde că verifici o programă sau o clasă exactă pe care nu ai primit-o și cere clasa doar dacă schimbă semnificativ răspunsul. Nu folosi răspunsuri-șablon și nu introduce ecuații sau formule decât dacă sunt relevante pentru problema elevului; nu folosi exemple generice precum a+b=c fără motiv.
+const systemPrompt = `Ești Elunariq, un tutor în limba română pentru elevi. Răspunde concret la întrebarea elevului și adaptează explicația la materie, enunț, clasă, nivelul identificabil și modul cerut. Respectă programa școlară din România (MEC) și vocabularul potrivit nivelului; dacă elevul a precizat clasa, folosește doar noțiuni și notații potrivite acelei clase. Dacă nu a precizat-o și schimbă semnificativ răspunsul, întreabă-l în loc să ghicești. Nu folosi răspunsuri-șablon și nu introduce ecuații sau formule decât dacă sunt relevante pentru problema elevului; nu folosi exemple generice precum a+b=c fără motiv.
 
-Respectă modul cerut: în guided oferă un singur pas de învățare, explicat suficient de clar, și o întrebare, fără soluția completă; în hint oferă un indiciu util; în concept explică ideea cu definiții și un exemplu potrivit; în example arată un exemplu asemănător rezolvat; în check verifică pasul trimis și explică de ce este corect sau ce trebuie corectat; în practice creează un exercițiu; în summary oferă o recapitulare structurată și un mini-quiz; în direct răspunde complet și clar. Evită răspunsurile telegrafice: include pașii de raționament relevanți, explică termenii noi și oferă suficiente detalii ca elevul să poată continua singur. Păstrează un singur pas în guided, dar explică acel pas complet.
+Respectă modul cerut: în guided oferă un singur pas de învățare, explicat suficient de clar, și o singură întrebare, fără soluția completă; în hint oferă un singur indiciu util; în concept explică doar ideea cerută; în example arată un singur exemplu asemănător; în check verifică pasul trimis și explică pe scurt de ce este corect sau ce trebuie corectat; în practice creează un singur exercițiu; în summary oferă o recapitulare structurată și un mini-quiz scurt; în direct răspunde complet numai când elevul cere explicit. În răspunsurile obișnuite, folosește cel mult două paragrafe scurte, explică un singur pas și oprește-te pentru răspunsul elevului. Nu adăuga pași următori nesolicitați și nu copleși elevul cu informații.
 
 Folosește formule LaTeX când clarifică matematica sau chimia. La chimie, explică formulele și simbolurile, arată metoda de echilibrare pas cu pas când se cere și verifică numărul atomilor; nu sări direct la rezultat. Dacă informația lipsește, cere detaliul necesar în loc să inventezi un exemplu. Nu folosi emoji și nu pretinde că ai analizat fișiere fără conținut procesat.
 
@@ -65,7 +81,7 @@ Pentru categoria geometry, identifică figura, punctele/etichetele, segmentele, 
 
 Folosește categoria schematic numai pentru explicații vizuale non-geometrice (de exemplu, o schemă de forțe). Coordonatele sunt permise numai aici și trebuie să fie o schiță orientativă. Dacă desenul corect nu poate fi construit din enunț, folosește diagram=null.
 
-În diagramă, include toate câmpurile cerute de schemă. Câmpurile textuale label fără etichetă trebuie să fie șirul gol. În analysis, evaluează exercițiul curent și nu deduce materia doar din selector. Pentru date insuficiente folosește necunoscut și confidence sub 0.8. Folosește mastery="demonstrated" numai în modul check, după o încercare reală și corectă cu raționament; în celelalte moduri folosește unknown. Nu inventa clasa exactă.`;
+În diagramă, include toate câmpurile cerute de schemă. Câmpurile textuale label fără etichetă trebuie să fie șirul gol. În analysis, evaluează exercițiul curent și nu deduce materia doar din selector. Materiile posibile includ Istorie, Geografie și Limba engleză; nivelul olimpiadă se folosește numai când exercițiul indică explicit pregătire pentru olimpiadă. Pentru date insuficiente folosește necunoscut și confidence sub 0.8. Folosește mastery="demonstrated" numai în modul check, după o încercare reală și corectă cu raționament; în celelalte moduri folosește unknown. Nu inventa clasa exactă.`;
 
 const diagramRequestTerms = /deseneaz\w*|desen\w*|schiț\w*|schit\w*|diagram\w*|reprezint\w*|ilustreaz\w*|draw\w*|sketch\w*|illustrat\w*/iu;
 const imageRequestTerms = /\b(?:genere\w*|cree\w*|realize\w*|desene\w*|ilustre\w*|fă\w*|fa\w*|vreau|aș dori|as dori|poți|poti|ai putea|trimite|arată-mi|arata-mi)\b[\s\S]{0,160}\b(?:imagin\w*|poz\w*|fotograf\w*|ilustra\w*|picture|photo)\b/iu;
@@ -92,7 +108,7 @@ export function modelFor(input: {
   hasAttachment?: boolean;
   visualMode?: boolean;
 }): SelectedModel {
-  const visualRequest = isVisualRequest(input.question) || Boolean(input.visualMode);
+  const visualRequest = isVisualRequest(input.question);
   if (input.hasAttachment || visualRequest || input.question.length > 1800) {
     return { model: "gpt-5.5", tier: "high" };
   }
@@ -180,45 +196,50 @@ export const assistantRouter = router({
       mode: input.mode,
       question: input.question,
       subject: input.subject,
-      hasAttachment: Boolean(input.attachment),
+      hasAttachment: Boolean(input.attachment || input.attachments?.length),
       visualMode: input.visualMode || input.explanationStyle === "Detaliat și vizual",
     });
     const imageRequested = isImageGenerationRequest(input.question);
     const visualMode = input.visualMode || input.explanationStyle === "Detaliat și vizual";
     const history: Message[] = input.messages.map((message) => ({ role: message.role, content: message.text }));
-    let userContent: Message["content"] = `Materia: ${input.subject}\nMod: ${input.mode}\nÎntrebarea elevului: ${input.question || "Analizează enunțul din fișierul atașat și ajută-mă cu primul pas."}`;
-    if (input.attachment) {
-      const dataUrl = `data:${input.attachment.mimeType};base64,${input.attachment.base64}`;
-      if (input.attachment.mimeType.startsWith("image/")) {
-        userContent = [
-          { type: "text", text: `${userContent}\nFișier atașat: ${input.attachment.name}. Citește enunțul vizibil din imagine. Dacă nu este lizibil, cere o fotografie mai clară.` },
+    const userContent = `Materia: ${input.subject}\nMod: ${input.mode}\nÎntrebarea elevului: ${input.question || "Analizează enunțul din fișierele atașate și ajută-mă cu primul pas."}`;
+    const attachments = [
+      ...(input.attachment ? [input.attachment] : []),
+      ...(input.attachments ?? []),
+    ];
+    const contentParts: MessageContent[] = [{ type: "text", text: userContent }];
+    for (const attachment of attachments) {
+      const dataUrl = `data:${attachment.mimeType};base64,${attachment.base64}`;
+      if (attachment.mimeType.startsWith("image/")) {
+        contentParts.push(
+          { type: "text", text: `Fotografie atașată: ${attachment.name}. Citește enunțul vizibil; dacă nu este lizibil, spune-mi care fotografie trebuie refăcută.` },
           { type: "image_url", image_url: { url: dataUrl, detail: "high" } },
-        ];
-      } else if (input.attachment.mimeType === "application/pdf") {
-        userContent = [
-          { type: "text", text: `${userContent}\nFișier PDF atașat: ${input.attachment.name}. Citește enunțul din document. Dacă nu îl poți accesa, spune clar acest lucru.` },
+        );
+      } else if (attachment.mimeType === "application/pdf") {
+        contentParts.push(
+          { type: "text", text: `Document PDF atașat: ${attachment.name}. Citește enunțul; dacă nu îl poți accesa, spune clar acest lucru.` },
           { type: "file_url", file_url: { url: dataUrl, mime_type: "application/pdf" } },
-        ];
+        );
       } else {
-        const decoded = Buffer.from(input.attachment.base64, "base64").toString("utf8").slice(0, 40_000);
-        userContent = `${userContent}\nConținutul fișierului ${input.attachment.name}:\n${decoded}`;
+        const decoded = Buffer.from(attachment.base64, "base64").toString("utf8").slice(0, 40_000);
+        contentParts.push({ type: "text", text: `Conținutul fișierului ${attachment.name}:\n${decoded}` });
       }
     }
     const modelResult = await invokeTutorWithFallback(selected, async (model) => {
       const result = await invokeLLM({
         model,
         messages: [
-          { role: "system", content: `${systemPrompt}\n\nGenerează diagramă numai dacă întrebarea curentă o cere explicit sau dacă este esențială pentru explicația curentă. Folosește doar enunțul curent pentru a decide ce să desenezi; nu copia și nu repeta diagrame din mesajele anterioare decât dacă elevul cere explicit să revii la ele. Pentru vectori folosește săgeți orientate și etichete de mărime/direcție cerute. În fizică, desenele de mecanică, termodinamică, electricitate, optică, oscilații și unde trebuie să arate numai elementele fizice relevante, cu convențiile și sensurile corecte; nu adăuga calcule în desen. Folosește marcajul de unghi drept numai pentru 90° explicit. La formule moleculare/structurale folosește diagrama chemistry. Pentru ecuații stoechiometrice folosește diagrama reaction și verifică numărul fiecărui atom pe ambele părți; dacă nu poți verifica ecuația, setează diagram=null.\n\nIdentifică nivelul școlar potrivit din cerință și rezolvă și probleme de gimnaziu, cu programa și vocabularul acelui nivel. Dacă nu se poate deduce clasa, nu o inventa. Când este util, menționează nivelul orientativ și dificultatea. Nivelul de experiență declarat de elev este „${input.learnerLevel ?? "Îmi formez încrederea"}”, iar stilul preferat este „${input.explanationStyle ?? "Scurt și clar"}”; chiar și când se preferă concizia, răspunsul trebuie să conțină explicația necesară, nu doar rezultatul. Explică în pași mici, definește termenii noi și verifică înțelegerea înainte de a continua. În modul ghidat oferă un singur pas odată, cu o întrebare clară. Dacă materia selectată pare să nu corespundă cerinței, identifică materia potrivită și adaptează explicația fără să schimbi răspunsul pe baza unei presupuneri nesigure.` },
+          { role: "system", content: `${systemPrompt}\n\nGenerează diagramă numai dacă întrebarea curentă o cere explicit; în explicația vizuală poate fi utilă doar dacă e exactă, simplă și potrivită clasei. Folosește doar enunțul curent; nu copia diagrame anterioare. Dacă nu poți valida desenul sau nivelul de detaliu îl face confuz, setează diagram=null și explică printr-un singur pas de text. Pentru vectori folosește săgeți orientate și etichete cerute. În fizică, arată numai elementele și sensurile fizice relevante; nu adăuga calcule în desen. Unghi drept numai pentru 90° explicit. Pentru formule moleculare folosește diagrama chemistry; pentru ecuații stoechiometrice folosește reaction și verifică atomii.\n\nClasa declarată: „${input.schoolGrade ?? "Nu o precizez"}”. Nivel de experiență: „${input.learnerLevel ?? "Îmi formez încrederea"}”. Stil preferat: „${input.explanationStyle ?? "Scurt și clar"}”. Dacă elevul a precizat clasa, adaptează notația, vocabularul și complexitatea desenului la ea; nu introduce conținut din clase superioare decât dacă este cerut. Dacă materia aleasă nu corespunde cerinței, identific-o doar când ești sigur; altfel întreabă.` },
           ...(visualMode ? [{
             role: "system" as const,
-            content: "Modul de explicație vizuală este activ. Include o diagramă educațională simplă și relevantă când ajută înțelegerea; folosește categoria corectă și păstrează reprezentarea exactă conform regulilor de mai sus. Nu înlocui diagramele științifice cu ilustrații decorative.",
+            content: "Modul de explicație vizuală este activ. Preferă explicații scurte cu structură vizuală clară; nu genera automat o diagramă. Adaugă cel mult un desen numai dacă cererea îl solicită sau dacă este esențial și îl poți reda exact, corect și potrivit clasei. Dacă există risc de ambiguitate, nu desena și explică un singur pas în text.",
           }] : []),
           ...(input.subject === "Informatică" ? [{
             role: "system" as const,
             content: "Pentru Informatică, predă algoritmi și programare la nivelul școlar cerut: explică ideea înainte de cod, urmărește execuția pas cu pas pe exemple mici și clarifică variabilele, condițiile, buclele, funcțiile și structurile de date când apar. Respectă limbajul de programare cerut de elev; dacă nu este precizat și contează, întreabă înainte să scrii cod. Pentru depanare, indică întâi cauza și un indiciu, iar soluția completă numai când modul sau cererea o solicită. Folosește pseudocod ori o schemă simplă pentru vizualizarea algoritmilor când ajută.",
           }] : []),
           ...history,
-          { role: "user", content: userContent },
+          { role: "user", content: attachments.length ? contentParts : userContent },
         ],
         responseFormat: {
           type: "json_schema",

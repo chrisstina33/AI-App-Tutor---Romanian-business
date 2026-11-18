@@ -14,13 +14,13 @@ export function BrandMark({ compact = false }: { compact?: boolean }) {
   );
 }
 
-export function ScreenHeader({ eyebrow, title, action }: { eyebrow?: string; title: string; action?: ReactNode }) {
+export function ScreenHeader({ eyebrow, title, action, compact = false }: { eyebrow?: string; title: string; action?: ReactNode; compact?: boolean }) {
   const colors = useColors();
   return (
-    <View style={styles.header}>
+    <View style={[styles.header, compact && styles.headerCompact]}>
       <View style={styles.headerCopy}>
         {eyebrow ? <Text style={[styles.eyebrow, { color: colors.primary }]}>{eyebrow.toUpperCase()}</Text> : null}
-        <Text style={[styles.screenTitle, { color: colors.foreground }]}>{title}</Text>
+        <Text style={[styles.screenTitle, compact && styles.screenTitleCompact, { color: colors.foreground }]}>{title}</Text>
       </View>
       {action}
     </View>
@@ -79,9 +79,11 @@ const styles = StyleSheet.create({
   brandSparkCore: { width: 10, height: 10, borderRadius: 5, backgroundColor: "#12152A" },
   brandName: { fontSize: 21, fontWeight: "800", letterSpacing: -0.6, color: "#171A32" },
   header: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 22 },
+  headerCompact: { marginBottom: 6 },
   headerCopy: { flex: 1, gap: 7 },
   eyebrow: { fontSize: 11, fontWeight: "800", letterSpacing: 1.5 },
   screenTitle: { fontSize: 30, lineHeight: 34, fontWeight: "800", letterSpacing: -0.8 },
+  screenTitleCompact: { fontSize: 25, lineHeight: 29 },
   iconButton: { borderRadius: 15, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   pressed: { opacity: 0.72, transform: [{ scale: 0.98 }] },
   card: { borderRadius: 22, borderWidth: 1, padding: 18, shadowColor: "#15162D", shadowOpacity: 0.05, shadowRadius: 16, shadowOffset: { width: 0, height: 7 }, elevation: 2 },

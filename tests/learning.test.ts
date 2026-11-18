@@ -4,6 +4,7 @@ import {
   recordLearnerQuestion,
   removeQuestionGeneratedLessons,
 } from "../shared/learning";
+import { recommendSubject, SUBJECTS } from "../lib/app-data";
 
 const initialState = learnerStateSchema.parse({
   preferences: {
@@ -18,6 +19,19 @@ const initialState = learnerStateSchema.parse({
 });
 
 describe("learner question and lesson tracking", () => {
+  it("recommends the least practiced preferred subject and falls back to all subjects", () => {
+    expect(recommendSubject(["physics", "math"], [
+      { subject: "Matematică", questionCount: 2 },
+      { subject: "Fizică", questionCount: 5 },
+    ])).toMatchObject({ id: "math" });
+    expect(recommendSubject([], [])).toEqual(SUBJECTS[0]);
+  });
+
+  it("defaults the school grade for legacy local and server learner states", () => {
+    expect(initialState.preferences.schoolGrade).toBe("Nu o precizez");
+    expect(SUBJECTS).toHaveLength(9);
+  });
+
   it("counts questions separately without creating lessons", () => {
     const updated = recordLearnerQuestion(initialState, " Matematică ", "2026-11-16T12:00:00.000Z");
 

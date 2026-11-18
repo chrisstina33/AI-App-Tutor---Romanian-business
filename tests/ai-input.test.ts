@@ -1,27 +1,33 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { invokeTutorWithFallback, isImageGenerationRequest, modelFor, parseTutorResponse, tutorChatInputSchema } from "../server/ai";
-import { revealSlowly } from "../services/ai-service";
+import { buildQuickActionQuestion, googleImagesSearchUrl } from "../services/ai-service";
 
 afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
-describe("tutor reply reveal", () => {
-  it("reveals replies character by character at a slower pace", async () => {
-    vi.useFakeTimers();
-    const updates: string[] = [];
-    const reveal = revealSlowly("Bun.", (partial) => updates.push(partial));
+describe("tutor quick actions", () => {
+  it("requires the learner's own work before checking a step", () => {
+    expect(buildQuickActionQuestion("check", "  ")).toBeNull();
+    expect(buildQuickActionQuestion("check", "", true)).toBe(
+      "Verifică pasul meu din exercițiul atașat.",
+    );
+    expect(buildQuickActionQuestion("check", "Am obținut x = 4.")).toBe(
+      "Verifică acest pas al meu: Am obținut x = 4.",
+    );
+  });
 
-    expect(updates).toEqual(["B"]);
-    await vi.advanceTimersByTimeAsync(54);
-    expect(updates).toEqual(["B"]);
-    await vi.advanceTimersByTimeAsync(1);
-    expect(updates).toEqual(["B", "Bu"]);
-    await vi.runAllTimersAsync();
-    await reveal;
+  it("preserves typed input when applying a quick action", () => {
+    expect(buildQuickActionQuestion("hint", "Problema este 2x = 8.")).toBe(
+      "Problema este 2x = 8.\n\nDă-mi un indiciu pentru problema trimisă.",
+    );
+  });
 
-    expect(updates.at(-1)).toBe("Bun.");
+  it("builds an encoded Google Images query", () => {
+    const url = new URL(googleImagesSearchUrl("Fizică Clasa a VIII-a forța de frecare"));
+    expect(url.searchParams.get("tbm")).toBe("isch");
+    expect(url.searchParams.get("q")).toBe("Fizică Clasa a VIII-a forța de frecare");
   });
 });
 
@@ -51,6 +57,24 @@ describe("tutor chat input", () => {
     expect(result.success).toBe(false);
   });
 
+  it("accepts multiple photos but rejects attachment payloads over the request budget", () => {
+    const photo = { name: "tema.jpg", mimeType: "image/jpeg" as const, base64: "aGVsbG8=" };
+    expect(tutorChatInputSchema.safeParse({
+      ...baseInput,
+      question: "",
+      attachments: [photo, { ...photo, name: "pagina-2.jpg" }],
+    }).success).toBe(true);
+
+    expect(tutorChatInputSchema.safeParse({
+      ...baseInput,
+      attachments: [
+        { ...photo, base64: "x".repeat(14_000_000) },
+        { ...photo, base64: "x".repeat(14_000_000) },
+        { ...photo, base64: "x".repeat(14_000_000) },
+      ],
+    }).success).toBe(false);
+  });
+
   it("routes explicit visual requests to high complexity and simple questions to low", () => {
     expect(modelFor({ mode: "guided", subject: "Matematică", question: "Desenează un paralelogram." }))
       .toEqual({ model: "gpt-5.5", tier: "high" });
@@ -59,7 +83,7 @@ describe("tutor chat input", () => {
     expect(modelFor({ mode: "direct", subject: "Biologie", question: "Analizează fotografia temei atașate." }))
       .toEqual({ model: "gpt-5-mini", tier: "low" });
     expect(modelFor({ mode: "concept", subject: "Biologie", question: "Explică fotosinteza.", visualMode: true }))
-      .toEqual({ model: "gpt-5.5", tier: "high" });
+      .toEqual({ model: "gpt-5-mini", tier: "low" });
   });
 
   it("recognizes natural Romanian requests for generated pictures", () => {
@@ -78,6 +102,35 @@ describe("tutor chat input", () => {
     }));
 
     expect(response.analysis.subject).toBe("Informatică");
+  });
+
+  it("recognizes the added geography and English subjects", () => {
+    for (const subject of ["Geografie", "Limba engleză"] as const) {
+      const response = parseTutorResponse(JSON.stringify({
+        text: "Să rezolvăm cerința pas cu pas.",
+        analysis: { subject, schoolLevel: "liceu", difficulty: "ușor", confidence: 0.9, mastery: "unknown" },
+        diagram: null,
+        imagePrompt: null,
+      }));
+      expect(response.analysis.subject).toBe(subject);
+    }
+  });
+
+  it("accepts history and olympiad-level tutor analysis while retaining unknown fallbacks", () => {
+    const response = parseTutorResponse(JSON.stringify({
+      text: "Să identificăm mai întâi sursa istorică.",
+      analysis: { subject: "Istorie", schoolLevel: "olimpiada", difficulty: "mediu", confidence: 0.95, mastery: "unknown" },
+      diagram: null,
+      imagePrompt: null,
+    }));
+
+    expect(response.analysis).toMatchObject({ subject: "Istorie", schoolLevel: "olimpiada" });
+    expect(() => parseTutorResponse(JSON.stringify({
+      text: "Am nevoie de mai mult context.",
+      analysis: { subject: "necunoscut", schoolLevel: "necunoscut", difficulty: "necunoscut", confidence: 0.2, mastery: "unknown" },
+      diagram: null,
+      imagePrompt: null,
+    }))).not.toThrow();
   });
 
   it("routes specialist text problems to medium and molecular structure drawings to high", () => {

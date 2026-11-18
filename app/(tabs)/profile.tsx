@@ -181,7 +181,59 @@ export default function ProfileScreen() {
             ]}
           />
           <Text style={[styles.fieldLabel, { color: colors.muted }]}>
-            CLASĂ / NIVEL
+            CLASA TA (OPȚIONAL)
+          </Text>
+          <View style={styles.optionWrap}>
+            {(
+              [
+                "Nu o precizez",
+                "Clasa a V-a",
+                "Clasa a VI-a",
+                "Clasa a VII-a",
+                "Clasa a VIII-a",
+                "Clasa a IX-a",
+                "Clasa a X-a",
+                "Clasa a XI-a",
+                "Clasa a XII-a",
+              ] as Preferences["schoolGrade"][]
+            ).map((item) => (
+              <Pressable
+                key={item}
+                accessibilityRole="button"
+                accessibilityState={{ selected: preferences.schoolGrade === item }}
+                onPress={() => updatePreferences({ schoolGrade: item })}
+                style={[
+                  styles.option,
+                  {
+                    backgroundColor:
+                      preferences.schoolGrade === item
+                        ? `${colors.primary}16`
+                        : colors.background,
+                    borderColor:
+                      preferences.schoolGrade === item
+                        ? colors.primary
+                        : colors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.optionText,
+                    {
+                      color:
+                        preferences.schoolGrade === item
+                          ? colors.primary
+                          : colors.muted,
+                    },
+                  ]}
+                >
+                  {item}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={[styles.fieldLabel, { color: colors.muted, marginTop: 10 }]}>
+            NIVELUL TĂU DE ÎNVĂȚARE
           </Text>
           <View style={styles.optionWrap}>
             {(

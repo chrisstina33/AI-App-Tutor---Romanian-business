@@ -17,4 +17,13 @@ describe("math formatting", () => {
       { value: "a+b=c", isMath: true },
     ]);
   });
+
+  it("cleans nested fractions and aligned formula markup for phone display", () => {
+    const formatted = formatLatexForDisplay(
+      "\\begin{aligned}\\frac{\\frac{a}{b}}{c} &= x/y\\\\x &= 2\\end{aligned}",
+    );
+
+    expect(formatted).toBe("a⁄b⁄c = x⁄y; x = 2");
+    expect(formatted).not.toMatch(/[\\{}]/);
+  });
 });

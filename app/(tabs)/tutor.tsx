@@ -6,11 +6,13 @@ import {
   useAudioRecorderState,
 } from "expo-audio";
 import * as FileSystem from "expo-file-system/legacy";
-import { useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -34,14 +36,21 @@ import { SUBJECTS } from "@/lib/app-data";
 import { ro } from "@/lib/i18n";
 import { generateLearningPdf } from "@/lib/pdf";
 import {
-  clearPendingUpload,
-  loadPendingUpload,
-  savePendingUpload,
+  clearPendingUploads,
+  loadPendingUploads,
+  savePendingUploads,
   type PendingUpload,
 } from "@/lib/storage";
 import {
+  loadSavedTutorLesson,
+  loadTutorMessages,
+  saveTutorLesson,
+  saveTutorMessages,
+} from "@/lib/tutor-storage";
+import {
+  buildQuickActionQuestion,
   createMessageId,
-  revealSlowly,
+  googleImagesSearchUrl,
   TUTOR_MODES,
   type TutorMessage,
   type TutorMode,
@@ -75,14 +84,17 @@ async function readBase64(uri: string): Promise<string> {
 export default function TutorScreen() {
   const colors = useColors();
   const { recordQuestion, state: learnerState } = useLearnerData();
-  const params = useLocalSearchParams<{ autoUpload?: string }>();
-  const [subject, setSubject] = useState(SUBJECTS[0].label);
+  const params = useLocalSearchParams<{ autoUpload?: string; subject?: string; lessonId?: string }>();
+  const [subject, setSubject] = useState(
+    () => SUBJECTS.find((item) => item.label === params.subject)?.label ?? SUBJECTS[0].label,
+  );
   const [agent, setAgent] = useState("Ghid socratic");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<TutorMessage[]>([INITIAL_MESSAGE]);
+  const [messagesLoaded, setMessagesLoaded] = useState(false);
   const [pending, setPending] = useState(false);
   const [mode, setMode] = useState<TutorMode>("guided");
-  const [upload, setUpload] = useState<PendingUpload | null>(null);
+  const [uploads, setUploads] = useState<PendingUpload[]>([]);
   const [notice, setNotice] = useState<string>(ro.slowReply);
   const [showSubjectPicker, setShowSubjectPicker] = useState(false);
   const [showAgentPicker, setShowAgentPicker] = useState(false);
@@ -96,11 +108,61 @@ export default function TutorScreen() {
   const recorderState = useAudioRecorderState(recorder);
   useEffect(() => {
     if (Platform.OS === "web") {
-      void clearPendingUpload();
+      void clearPendingUploads();
       return;
     }
-    void loadPendingUpload().then(setUpload);
+    void loadPendingUploads().then(setUploads);
   }, [params.autoUpload]);
+  useFocusEffect(useCallback(() => {
+    const requestedSubject = SUBJECTS.find((item) => item.label === params.subject);
+    if (requestedSubject && requestedSubject.label !== subject) {
+      setSubject(requestedSubject.label);
+    }
+  }, [params.subject, subject]));
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const savedLesson = params.lessonId
+        ? await loadSavedTutorLesson(params.lessonId)
+        : null;
+      const savedMessages = savedLesson?.messages ?? await loadTutorMessages();
+      if (!active) return;
+      if (savedLesson) {
+        setMessages(savedLesson.messages);
+        setSubject(savedLesson.subject);
+      } else if (savedMessages.length) {
+        setMessages(savedMessages);
+      }
+      setMessagesLoaded(true);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [params.lessonId]);
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    void fetch(`${getApiBaseUrl()}/api/health`, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (active) setNotice("Serverul tutorului este pregătit. Scrie problema sau atașează tema.");
+      })
+      .catch((error: unknown) => {
+        if (!active || controller.signal.aborted) return;
+        console.warn(
+          "[Tutor] API warm-up failed",
+          error instanceof Error ? error.message : "unknown error",
+        );
+        setNotice("Serverul poate avea nevoie de timp pentru pornire. Scrie problema sau atașează tema, apoi încearcă din nou.");
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, []);
+  useEffect(() => {
+    if (messagesLoaded) void saveTutorMessages(messages);
+  }, [messages, messagesLoaded]);
   const history = useMemo(
     () => messages.map(({ role, text }) => ({ role, text })),
     [messages],
@@ -122,7 +184,6 @@ export default function TutorScreen() {
     const next: TutorMessage = {
       id,
       role: "assistant",
-      text: "",
       mode: requestedMode,
       provider: reply.provider,
       model: reply.model,
@@ -131,21 +192,15 @@ export default function TutorScreen() {
       ...(reply.imageError ? { imageError: reply.imageError } : {}),
       ...(reply.analysis ? { analysis: reply.analysis } : {}),
       createdAt: currentTimestamp(),
+      text: reply.text,
     };
     setMessages((current) => [...current, next]);
-    setNotice(`${ro.liveTutor} · ${reply.model ?? "model AI"} · răspunsul este afișat treptat.${reply.analysis?.confidence !== undefined && reply.analysis.confidence >= 0.8 && reply.analysis.subject !== "necunoscut" ? ` Materie detectată: ${reply.analysis.subject}.` : ""}`);
-    await revealSlowly(reply.text, (partial) =>
-      setMessages((current) =>
-        current.map((message) =>
-          message.id === id ? { ...message, text: partial } : message,
-        ),
-      ),
-    );
+    setNotice(`${ro.liveTutor} · ${reply.model ?? "model AI"}${reply.analysis?.confidence !== undefined && reply.analysis.confidence >= 0.8 && reply.analysis.subject !== "necunoscut" ? ` · Materie detectată: ${reply.analysis.subject}.` : ""}`);
   }
   async function submitQuestion(text: string, requestedMode: TutorMode = mode) {
     const question = text.trim();
-    if ((!question && !upload) || pending) return;
-    const questionText = question || `Ajută-mă să înțeleg tema atașată (${upload?.name}).`;
+    if ((!question && !uploads.length) || pending) return;
+    const questionText = question || `Ajută-mă să înțeleg tema atașată (${uploads.map((file) => file.name).join(", ")}).`;
     setInput("");
     setPending(true);
     const userMessage: TutorMessage = {
@@ -158,21 +213,24 @@ export default function TutorScreen() {
     setMessages((current) => [...current, userMessage]);
     let recordedQuestion = false;
     try {
+      const attachments = await Promise.all(uploads.map(async (file) => ({
+        name: file.name,
+        mimeType: (file.mimeType ?? "text/plain") as "image/png" | "image/jpeg" | "application/pdf" | "text/plain",
+        base64: await readBase64(file.uri),
+      })));
+      if (attachments.reduce((total, file) => total + file.base64.length, 0) > 40_000_000) {
+        throw new Error("Atașamentele depășesc 30 MB în total. Trimite mai puține poze sau fișiere odată.");
+      }
       const live = await assistantMutation.mutateAsync({
         subject,
         mode: requestedMode,
         question: questionText,
         learnerLevel: learnerState.preferences?.level,
+        schoolGrade: learnerState.preferences?.schoolGrade,
         explanationStyle: learnerState.preferences?.explanationStyle,
         visualMode: agent === "Explicație vizuală" || learnerState.preferences?.explanationStyle === "Detaliat și vizual",
         messages: history.slice(-12),
-        ...(upload ? {
-          attachment: {
-            name: upload.name,
-            mimeType: (upload.mimeType ?? "text/plain") as "image/png" | "image/jpeg" | "application/pdf" | "text/plain",
-            base64: await readBase64(upload.uri),
-          },
-        } : {}),
+        ...(attachments.length ? { attachments } : {}),
       });
       const confidentSubject = live.analysis && live.analysis.confidence >= 0.8 && live.analysis.subject !== "necunoscut"
         ? live.analysis.subject
@@ -202,9 +260,9 @@ export default function TutorScreen() {
           await exportPdf([userMessage, pdfReply], effectiveSubject);
         }
       }
-      if (upload) {
-        setUpload(null);
-        await clearPendingUpload();
+      if (uploads.length) {
+        setUploads([]);
+        await clearPendingUploads();
       }
     } catch (error) {
       if (!recordedQuestion) recordQuestion(subject);
@@ -225,17 +283,46 @@ export default function TutorScreen() {
     }
   }
   function handleQuickAction(action: TutorMode) {
+    if (pending) return;
     setMode(action);
-    const prompts: Partial<Record<TutorMode, string>> = {
-      hint: "Am nevoie de un indiciu pentru problema trimisă.",
-      concept: "Explică-mi ideea principală, apoi pune-mi o întrebare.",
-      example:
-        "Arată-mi un exemplu asemănător, dar oprește-te înainte de rezultat.",
-      check: "Verifică ultimul meu pas și spune-mi ce să verific.",
-      practice: "Dă-mi un exercițiu asemănător pe care să îl încerc singur.",
-      summary: "Fă o recapitulare și pune-mi un mini-quiz.",
+    const question = buildQuickActionQuestion(action, input, uploads.length > 0);
+    if (!question) {
+      setNotice("Scrie pasul în casetă sau atașează o fotografie a exercițiului, apoi apasă din nou «Verifică pasul meu».");
+      return;
+    }
+    submitQuestion(question, action);
+  }
+  function searchGoogleImages() {
+    const latestQuestion = [...messages]
+      .reverse()
+      .find((message) => message.role === "user")?.text;
+    if (!latestQuestion) {
+      setNotice("Trimite mai întâi exercițiul, apoi poți căuta o imagine legată de el.");
+      return;
+    }
+    const grade = learnerState.preferences.schoolGrade;
+    const query = [
+      subject,
+      grade !== "Nu o precizez" ? grade : "",
+      latestQuestion,
+    ].filter(Boolean).join(" ");
+    const url = googleImagesSearchUrl(query);
+    const disclosure = "Materia, clasa (dacă ai ales-o) și textul ultimului exercițiu vor fi trimise către Google pentru căutarea imaginilor. Rezultatele se deschid separat și pot necesita verificarea corectitudinii.";
+    const openSearch = () => {
+      void Linking.openURL(url)
+        .then(() => setNotice("Am deschis rezultatele Google Imagini. Verifică dacă desenul se potrivește lecției tale."))
+        .catch((error: unknown) => {
+          setNotice(error instanceof Error ? `Căutarea nu s-a putut deschide: ${error.message}` : "Căutarea nu s-a putut deschide.");
+        });
     };
-    submitQuestion(prompts[action] ?? "Ajută-mă cu următorul pas.", action);
+    if (Platform.OS === "web") {
+      if (window.confirm(disclosure)) openSearch();
+      return;
+    }
+    Alert.alert("Cauți desene pe Google?", disclosure, [
+      { text: "Anulează", style: "cancel" },
+      { text: "Continuă", onPress: openSearch },
+    ]);
   }
   async function toggleVoice() {
     try {
@@ -288,6 +375,14 @@ export default function TutorScreen() {
       );
     }
   }
+  async function saveCurrentLesson() {
+    try {
+      const lesson = await saveTutorLesson(subject, messages);
+      setNotice(`Lecția „${lesson.title}” a fost salvată pe acest dispozitiv.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Lecția nu a putut fi salvată.");
+    }
+  }
   async function exportPdf(additionalMessages: TutorMessage[] = [], pdfSubject = subject) {
     if (pdfBusy) return;
     const printWindow = Platform.OS === "web" ? window.open("", "_blank") : undefined;
@@ -311,6 +406,7 @@ export default function TutorScreen() {
         mode: "summary",
         question: "Creează o fișă de recapitulare clară, utilă pentru învățare și aliniată programei școlare din România. Sintetizează noțiunile importante discutate, explică termenii necesari, include formulele și pașii de rezolvare relevanți și încheie cu trei întrebări scurte de verificare. Nu reda conversația și nu inventa noțiuni care nu au fost discutate sau nu sunt necesare.",
         learnerLevel: learnerState.preferences?.level,
+        schoolGrade: learnerState.preferences?.schoolGrade,
         explanationStyle: learnerState.preferences?.explanationStyle,
         visualMode: agent === "Explicație vizuală" || learnerState.preferences?.explanationStyle === "Detaliat și vizual",
         messages: lessonMessages.slice(-10).map((message) => ({
@@ -379,7 +475,7 @@ export default function TutorScreen() {
   }
 
   return (
-    <ScreenContainer edges={["top", "left", "right"]} safeAreaClassName="px-5">
+    <ScreenContainer edges={["top", "left", "right"]} safeAreaClassName="px-4">
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -388,7 +484,8 @@ export default function TutorScreen() {
           <ScreenHeader
             eyebrow={ro.tutorEyebrow}
             title={ro.tutor}
-            action={<IconButton icon="more-horiz" label="Mai multe opțiuni" />}
+            compact
+            action={<IconButton icon="more-horiz" label="Mai multe opțiuni" size={36} />}
           />
         </View>
         <View style={styles.controlRow}>
@@ -522,6 +619,7 @@ export default function TutorScreen() {
           style={styles.conversation}
           contentContainerStyle={styles.conversationContent}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           onContentSizeChange={() =>
             scrollRef.current?.scrollToEnd({ animated: false })
           }
@@ -552,20 +650,6 @@ export default function TutorScreen() {
               </Text>
             </View>
           ) : null}
-          <View style={styles.attachedWrap}>
-            <UploadCard
-              value={upload}
-              compact
-              onChange={async (value) => {
-                setUpload(value);
-                if (value && Platform.OS !== "web") {
-                  await savePendingUpload(value);
-                } else if (!value) {
-                  await clearPendingUpload();
-                }
-              }}
-            />
-          </View>
         </ScrollView>
         <View style={styles.quickActions}>
           <ScrollView
@@ -578,17 +662,20 @@ export default function TutorScreen() {
                 key={action.id}
                 accessibilityRole="button"
                 onPress={() => handleQuickAction(action.id)}
+                disabled={pending}
+                accessibilityState={{ disabled: pending }}
                 style={[
                   styles.quickAction,
                   {
                     borderColor: `${action.tone}45`,
                     backgroundColor: `${action.tone}12`,
+                    opacity: pending ? 0.5 : 1,
                   },
                 ]}
               >
                 <MaterialIcons
                   name={action.icon as never}
-                  size={16}
+                  size={14}
                   color={action.tone}
                 />
                 <Text
@@ -598,8 +685,38 @@ export default function TutorScreen() {
                 </Text>
               </Pressable>
             ))}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Caută desene educaționale pe Google"
+              onPress={searchGoogleImages}
+              style={[
+                styles.quickAction,
+                { borderColor: `${colors.primary}45`, backgroundColor: `${colors.primary}12` },
+              ]}
+            >
+              <MaterialIcons name="image-search" size={14} color={colors.primary} />
+              <Text style={[styles.quickActionText, { color: colors.foreground }]}>
+                Caută desene
+              </Text>
+            </Pressable>
           </ScrollView>
         </View>
+        <View style={styles.attachedWrap}>
+          <UploadCard
+            value={null}
+            multiple
+            selectedUploads={uploads}
+            compact
+            onChange={() => undefined}
+            onUploadsChange={async (value) => {
+              setUploads(value);
+              await savePendingUploads(value);
+            }}
+          />
+        </View>
+        <Text style={[styles.exampleHint, { color: colors.muted }]}>
+          Poți scrie pasul sau atașa exercițiul. De exemplu: „Am ajuns la 2x = 8. E corect dacă împart ambele părți la 2?”
+        </Text>
         <View
           style={[
             styles.composer,
@@ -623,7 +740,7 @@ export default function TutorScreen() {
             value={input}
             onChangeText={setInput}
             multiline
-            placeholder={ro.askQuestion}
+            placeholder="Scrie enunțul, pasul tău sau întrebarea…"
             placeholderTextColor={colors.muted}
             style={[styles.input, { color: colors.foreground }]}
           />
@@ -631,19 +748,19 @@ export default function TutorScreen() {
             accessibilityRole="button"
             accessibilityLabel="Trimite întrebarea"
             onPress={() => submitQuestion(input)}
-            disabled={(!input.trim() && !upload) || pending}
+            disabled={(!input.trim() && !uploads.length) || pending}
             style={[
               styles.sendButton,
               {
                 backgroundColor:
-                  (input.trim() || upload) && !pending ? colors.primary : colors.border,
+                  (input.trim() || uploads.length) && !pending ? colors.primary : colors.border,
               },
             ]}
           >
             <MaterialIcons
               name="arrow-upward"
               size={19}
-              color={(input.trim() || upload) && !pending ? "#FFFFFF" : colors.muted}
+              color={(input.trim() || uploads.length) && !pending ? "#FFFFFF" : colors.muted}
             />
           </Pressable>
         </View>
@@ -690,6 +807,15 @@ export default function TutorScreen() {
           <View style={styles.footerActions}>
             <Pressable
               accessibilityRole="button"
+              onPress={() => void saveCurrentLesson()}
+              disabled={pending}
+            >
+              <Text style={[styles.modeToggle, { color: colors.primary }]}>
+                Salvează lecția
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
               onPress={() => void exportPdf()}
               disabled={pdfBusy}
             >
@@ -716,45 +842,45 @@ export default function TutorScreen() {
   );
 }
 const styles = StyleSheet.create({
-  topBar: { marginBottom: 3 },
-  controlRow: { flexDirection: "row", gap: 9, marginBottom: 10 },
+  topBar: { marginBottom: 0 },
+  controlRow: { flexDirection: "row", gap: 7, marginBottom: 6 },
   selector: {
     flex: 1,
-    minHeight: 42,
+    minHeight: 36,
     borderWidth: 1,
-    borderRadius: 13,
-    paddingHorizontal: 11,
+    borderRadius: 11,
+    paddingHorizontal: 8,
     flexDirection: "row",
     alignItems: "center",
-    gap: 7,
+    gap: 5,
   },
   selectorText: { flex: 1, fontSize: 11, fontWeight: "800" },
   agentDot: { width: 8, height: 8, borderRadius: 4 },
-  pickerCard: { padding: 13, marginBottom: 10 },
+  pickerCard: { padding: 10, marginBottom: 7 },
   pickerLabel: {
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 1.2,
     marginBottom: 8,
   },
-  pickerWrap: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
+  pickerWrap: { flexDirection: "row", flexWrap: "wrap", gap: 5 },
   pickerItem: {
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     borderRadius: 10,
   },
   pickerItemText: { fontSize: 12, fontWeight: "700" },
   conversation: { flex: 1 },
-  conversationContent: { paddingTop: 8, paddingBottom: 12 },
+  conversationContent: { paddingTop: 4, paddingBottom: 6 },
   modeStatus: {
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 7,
-    marginBottom: 13,
-    paddingHorizontal: 3,
+    marginBottom: 7,
+    paddingHorizontal: 2,
   },
   statusDot: { width: 7, height: 7, borderRadius: 4, marginTop: 5 },
   statusText: { flex: 1, fontSize: 11, lineHeight: 16 },
@@ -762,50 +888,51 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 9,
-    paddingVertical: 9,
+    paddingVertical: 6,
   },
   typingText: { fontSize: 12 },
-  attachedWrap: { marginTop: 5 },
-  quickActions: { marginTop: 6, marginBottom: 9 },
-  quickActionsContent: { gap: 7, paddingVertical: 2 },
+  attachedWrap: { marginBottom: 3 },
+  exampleHint: { fontSize: 10, lineHeight: 14, marginBottom: 4, paddingHorizontal: 2 },
+  quickActions: { marginTop: 2, marginBottom: 4 },
+  quickActionsContent: { gap: 5, paddingVertical: 1 },
   quickAction: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    borderRadius: 11,
+    gap: 4,
+    borderRadius: 9,
     borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
   },
-  quickActionText: { fontSize: 11, fontWeight: "800" },
+  quickActionText: { fontSize: 10, fontWeight: "800" },
   composer: {
-    minHeight: 54,
+    minHeight: 48,
     borderWidth: 1,
-    borderRadius: 18,
+    borderRadius: 15,
     flexDirection: "row",
     alignItems: "flex-end",
-    padding: 7,
-    gap: 6,
+    padding: 5,
+    gap: 4,
   },
   paperclip: {
-    width: 34,
-    height: 38,
+    width: 30,
+    height: 34,
     alignItems: "center",
     justifyContent: "center",
   },
   input: {
     flex: 1,
-    maxHeight: 94,
-    minHeight: 38,
-    fontSize: 14,
-    lineHeight: 20,
+    maxHeight: 86,
+    minHeight: 34,
+    fontSize: 13,
+    lineHeight: 18,
     paddingHorizontal: 2,
-    paddingVertical: 9,
+    paddingVertical: 7,
   },
   sendButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 13,
+    width: 34,
+    height: 34,
+    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -819,9 +946,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 10,
-    gap: 8,
+    paddingVertical: 3,
+    gap: 6,
   },
   footerActions: { flex: 1, alignItems: "flex-end", gap: 5 },
-  modeToggle: { fontSize: 11, fontWeight: "800" },
+  modeToggle: { fontSize: 10, fontWeight: "800" },
 });

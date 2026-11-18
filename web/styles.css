@@ -13,3 +13,6 @@ body.light .preview-message,body.light .chat-message,body.light .chat-composer{b
 body.light .preview-formula{color:#17152e;border-color:rgba(58,49,105,.2)}
 body.light .preview-formula span{color:#9a4d16}
 @media(prefers-reduced-motion:reduce){html,body,.glass-panel,.glass-chip,.site-header,.subject-card,.tutor-card,.tutor-note,.progress-card,.mini-progress,.test-card,.auth-card,.contact-card,input,textarea,select{transition:none}}
+.chat-example{font-size:12px;line-height:1.45;opacity:.82;margin:6px 2px 0}
+.quick-prompts .glass-chip{padding:6px 9px;font-size:12px}
+@media(max-width:640px){.section-shell{padding-left:16px;padding-right:16px}.tutor-layout{grid-template-columns:1fr}.tutor-note{display:none}.chat-example{font-size:11px}.quick-prompts{gap:5px}}

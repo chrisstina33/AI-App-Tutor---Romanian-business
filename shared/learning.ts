@@ -3,6 +3,17 @@ import { z } from "zod";
 export const learnerStateSchema = z.object({
   preferences: z.object({
     displayName: z.string().trim().min(1).max(80),
+    schoolGrade: z.enum([
+      "Nu o precizez",
+      "Clasa a V-a",
+      "Clasa a VI-a",
+      "Clasa a VII-a",
+      "Clasa a VIII-a",
+      "Clasa a IX-a",
+      "Clasa a X-a",
+      "Clasa a XI-a",
+      "Clasa a XII-a",
+    ]).default("Nu o precizez"),
     level: z.enum([
       "La început",
       "Îmi formez încrederea",

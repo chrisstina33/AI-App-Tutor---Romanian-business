@@ -4,6 +4,10 @@ const subjects = [
   { name: "Chimie", description: "Reacții și legături explicate.", icon: "flask-conical" },
   { name: "Biologie", description: "Procese, sisteme și concepte.", icon: "leaf" },
   { name: "Română", description: "Texte, idei și argumentare.", icon: "book-open" },
+  { name: "Informatică", description: "Algoritmi și programare.", icon: "code-xml" },
+  { name: "Istorie", description: "Epoci, evenimente și surse istorice.", icon: "landmark" },
+  { name: "Geografie", description: "Hărți, regiuni și fenomene geografice.", icon: "globe-2" },
+  { name: "Engleză", description: "Gramatică, vocabular și comunicare.", icon: "languages" },
 ];
 const demoResponses = {
   hint: "Privește operația care este cel mai departe de necunoscută. Aplică operația inversă pe ambele părți. Ce obții după acest singur pas?",
@@ -35,7 +39,7 @@ function renderProgress() {
 }
 function addMessage(role, text) { const message = document.createElement("div"); message.className = `chat-message ${role}`; if (role === "assistant") { message.innerHTML = `<span class="message-label">Elunariq</span><p></p>`; message.querySelector("p").textContent = text; } else { message.innerHTML = `<p>${escapeHtml(text)}</p>`; } $("#chat-log").appendChild(message); message.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "nearest" }); return message; }
 function replyFor(text) { const normalized = text.toLocaleLowerCase("ro"); if (normalized.includes("indiciu") || normalized.includes("hint")) return demoResponses.hint; if (normalized.includes("idee") || normalized.includes("concept")) return demoResponses.concept; if (normalized.includes("exerci") || normalized.includes("practic")) return demoResponses.practice; return demoResponses.default; }
-function revealReply(node, text) { const target = node.querySelector("p"); if (reduceMotion) { target.textContent = text; return; } const words = text.split(" "); let index = 0; const timer = window.setInterval(() => { target.textContent += `${index ? " " : ""}${words[index]}`; index += 1; if (index >= words.length) window.clearInterval(timer); }, 34); }
+function revealReply(node, text) { node.querySelector("p").textContent = text; }
 function submitTutor(text) { const value = text.trim(); if (!value) return; addMessage("user", value); $("#chat-input").value = ""; const pending = addMessage("assistant", "Scriu următorul pas…"); pending.classList.add("pending"); window.setTimeout(() => { pending.classList.remove("pending"); revealReply(pending, replyFor(value)); }, reduceMotion ? 0 : 520); }
 function toggleTheme() { document.body.classList.toggle("light"); const icon = $("[data-action=theme] i"); if (icon) icon.setAttribute("data-lucide", document.body.classList.contains("light") ? "moon" : "sun"); refreshIcons(); saveState(); showToast(document.body.classList.contains("light") ? "Tema luminoasă este activă." : "Tema întunecată este activă."); }
 function startTest() { $("#test-feedback").textContent = ""; $("#test-dialog").showModal(); refreshIcons(); }
