@@ -21,6 +21,29 @@ function isDuplicateKeyError(error: unknown): boolean {
   const candidate = error as { code?: unknown; errno?: unknown };
   return candidate.code === "ER_DUP_ENTRY" || candidate.errno === 1062;
 }
+function authDatabaseUnavailable(operation: string, error: unknown): never {
+  let current = error;
+  let candidate: { code?: unknown; errno?: unknown } = {};
+  for (let depth = 0; depth < 5 && current && typeof current === "object"; depth += 1) {
+    const cause = current as { code?: unknown; errno?: unknown; cause?: unknown };
+    if (cause.code !== undefined || cause.errno !== undefined) {
+      candidate = cause;
+      break;
+    }
+    current = cause.cause;
+  }
+  const missingTable = candidate.code === "ER_NO_SUCH_TABLE" || candidate.errno === 1146;
+  console.error(`[Auth] ${operation} database operation failed`, {
+    code: typeof candidate.code === "string" ? candidate.code : "unknown",
+    errno: typeof candidate.errno === "number" ? candidate.errno : undefined,
+  });
+  throw new TRPCError({
+    code: "SERVICE_UNAVAILABLE",
+    message: missingTable
+      ? "Tabelele pentru conturi lipsesc. Aplică migrațiile bazei de date cu `pnpm db:migrate`."
+      : "Serviciul de conturi nu poate accesa baza de date momentan. Încearcă din nou mai târziu.",
+  });
+}
 function unavailable(): never { throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Conturile au nevoie de DATABASE_URL (sau toate câmpurile DATABASE_*), de conexiune la baza de date și de migrarea auth v2 pe server." }); }
 async function createSession(userId: number) {
   const db = await getDb(); if (!db) unavailable();
@@ -44,14 +67,14 @@ export const authRouter = router({
     const db = await getDb(); if (!db) unavailable();
     const email = input.email.toLowerCase();
     allowAttempt(`signup:${email}`);
-    const existing = await db.select({ userId: authAccounts.userId }).from(authAccounts).where(eq(authAccounts.email, email)).limit(1);
-    if (existing.length) throw new TRPCError({ code: "CONFLICT", message: "Există deja un cont cu această adresă de e-mail." });
     const openId = randomUUID();
     const hashedPassword = passwordHash(input.password);
     const token = randomBytes(32).toString("base64url");
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     let userId: number;
     try {
+      const existing = await db.select({ userId: authAccounts.userId }).from(authAccounts).where(eq(authAccounts.email, email)).limit(1);
+      if (existing.length) throw new TRPCError({ code: "CONFLICT", message: "Există deja un cont cu această adresă de e-mail." });
       userId = await db.transaction(async (tx) => {
         await tx.insert(users).values({ openId, name: input.name, email, loginMethod: "password" });
         const accountUser = await tx.select({ id: users.id }).from(users).where(eq(users.openId, openId)).limit(1);
@@ -63,17 +86,27 @@ export const authRouter = router({
       });
     } catch (error) {
       if (isDuplicateKeyError(error)) throw new TRPCError({ code: "CONFLICT", message: "Există deja un cont cu această adresă de e-mail." });
-      throw error;
+      if (error instanceof TRPCError) throw error;
+      authDatabaseUnavailable("Sign-up", error);
     }
     return { session: { token, expiresAt: expiresAt.toISOString() }, user: { id: userId, name: input.name, email, accountType: input.accountType } };
   }),
   signIn: publicProcedure.input(z.object({ email: z.string().trim().email().max(320), password: z.string().min(1).max(128) })).mutation(async ({ input }) => {
     allowAttempt(`signin:${input.email.toLowerCase()}`);
     const db = await getDb(); if (!db) unavailable();
-    const rows = await db.select({ id: users.id, name: users.name, email: authAccounts.email, accountType: authAccounts.accountType, passwordHash: authAccounts.passwordHash }).from(authAccounts).innerJoin(users, eq(users.id, authAccounts.userId)).where(eq(authAccounts.email, input.email.toLowerCase())).limit(1);
+    let rows: { id: number; name: string | null; email: string; accountType: "student" | "parent"; passwordHash: string }[];
+    try {
+      rows = await db.select({ id: users.id, name: users.name, email: authAccounts.email, accountType: authAccounts.accountType, passwordHash: authAccounts.passwordHash }).from(authAccounts).innerJoin(users, eq(users.id, authAccounts.userId)).where(eq(authAccounts.email, input.email.toLowerCase())).limit(1);
+    } catch (error) {
+      authDatabaseUnavailable("Sign-in", error);
+    }
     const row = rows[0];
     if (!row || !passwordMatches(input.password, row.passwordHash)) throw new TRPCError({ code: "UNAUTHORIZED", message: "E-mailul sau parola nu sunt corecte." });
-    return { session: await createSession(row.id), user: accountPublic(row) };
+    try {
+      return { session: await createSession(row.id), user: accountPublic(row) };
+    } catch (error) {
+      authDatabaseUnavailable("Session creation", error);
+    }
   }),
   signOut: protectedProcedure.mutation(async ({ ctx }) => {
     if (ctx.sessionTokenHash) { const db = await getDb(); if (db) await db.delete(authSessions).where(eq(authSessions.tokenHash, ctx.sessionTokenHash)); }

@@ -29,6 +29,11 @@ describe("learner question and lesson tracking", () => {
 
   it("defaults the school grade for legacy local and server learner states", () => {
     expect(initialState.preferences.schoolGrade).toBe("Nu o precizez");
+    expect(initialState.preferences.studiedTopics).toEqual([]);
+    expect(initialState.preferences.studiedTopicsSubject).toBe("");
+    expect(initialState.preferences.diagnosticScore).toBe(0);
+    expect(initialState.preferences.diagnosticSubject).toBe("");
+    expect(initialState.preferences.tutorSetupComplete).toBe(false);
     expect(SUBJECTS).toHaveLength(9);
   });
 

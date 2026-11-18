@@ -31,6 +31,8 @@ export const tutorChatInputSchema = z.object({
   learnerLevel: z.enum(["La început", "Îmi formez încrederea", "Pregătit pentru examen"]).optional(),
   schoolGrade: z.enum(["Nu o precizez", "Clasa a V-a", "Clasa a VI-a", "Clasa a VII-a", "Clasa a VIII-a", "Clasa a IX-a", "Clasa a X-a", "Clasa a XI-a", "Clasa a XII-a"]).optional(),
   explanationStyle: z.enum(["Scurt și clar", "Detaliat și vizual", "Întrebări socratice"]).optional(),
+  studiedTopics: z.array(z.string().trim().min(1).max(80)).max(30).optional(),
+  diagnosticScore: z.number().int().min(0).max(3).optional(),
   visualMode: z.boolean().optional(),
   messages: z.array(z.discriminatedUnion("role", [
     z.object({ role: z.literal("user"), text: z.string().max(4000) }),
@@ -67,7 +69,7 @@ function normalizeStructuredOutputSchema(schema: unknown): unknown {
 export const tutorResponseJsonSchema = normalizeStructuredOutputSchema(
   z.toJSONSchema(tutorResponseSchema, { target: "openai" }),
 ) as Record<string, unknown>;
-const systemPrompt = `Ești Elunariq, un tutor în limba română pentru elevi. Răspunde concret la întrebarea elevului și adaptează explicația la materie, enunț, clasă, nivelul identificabil și modul cerut. Respectă programa școlară din România (MEC) și vocabularul potrivit nivelului; dacă elevul a precizat clasa, folosește doar noțiuni și notații potrivite acelei clase. Dacă nu a precizat-o și schimbă semnificativ răspunsul, întreabă-l în loc să ghicești. Nu folosi răspunsuri-șablon și nu introduce ecuații sau formule decât dacă sunt relevante pentru problema elevului; nu folosi exemple generice precum a+b=c fără motiv.
+const systemPrompt = `Ești Elunariq, un tutor în limba română pentru elevi. Răspunde concret la întrebarea elevului și adaptează explicația la materie, enunț, clasă, nivelul identificabil și modul cerut. Respectă programa școlară din România (MEC) și vocabularul potrivit nivelului; dacă elevul a precizat clasa, folosește doar noțiuni și notații potrivite acelei clase. Dacă nu a precizat-o și schimbă semnificativ răspunsul, întreabă-l în loc să ghicești. Temele declarate ca studiate sunt singurele pe care le poți presupune cunoscute; pentru noțiunile nedeclarate, verifică ce știe elevul și explică termenii pe înțelesul lui înainte să îi folosești. Dacă elevul spune că nu a studiat o noțiune sau că nu o înțelege, nu continua să o folosești ca și cum ar fi cunoscută: clarifică termenii necesari și pornește de la un exemplu simplu. Scorul mini-quizului inițial este doar un indiciu orientativ, nu o notă și nu dovedește stăpânirea materiei; folosește-l pentru a calibra primul pas, apoi verifică înțelegerea prin dialog. Nu introduce concepte universitare sau notații avansate (de exemplu, forma Jordan) decât dacă elevul le cere explicit și sunt potrivite programei și clasei. Nu folosi jargon fără explicație, formule greu de urmărit sau salturi peste pași. Nu folosi răspunsuri-șablon și nu introduce ecuații sau formule decât dacă sunt relevante pentru problema elevului; nu folosi exemple generice precum a+b=c fără motiv.
 
 Respectă modul cerut: în guided oferă un singur pas de învățare, explicat suficient de clar, și o singură întrebare, fără soluția completă; în hint oferă un singur indiciu util; în concept explică doar ideea cerută; în example arată un singur exemplu asemănător; în check verifică pasul trimis și explică pe scurt de ce este corect sau ce trebuie corectat; în practice creează un singur exercițiu; în summary oferă o recapitulare structurată și un mini-quiz scurt; în direct răspunde complet numai când elevul cere explicit. În răspunsurile obișnuite, folosește cel mult două paragrafe scurte, explică un singur pas și oprește-te pentru răspunsul elevului. Nu adăuga pași următori nesolicitați și nu copleși elevul cu informații.
 
@@ -204,7 +206,7 @@ export const assistantRouter = router({
     const imageRequested = isImageGenerationRequest(input.question);
     const visualMode = input.visualMode || input.explanationStyle === "Detaliat și vizual";
     const history: Message[] = input.messages.map((message) => ({ role: message.role, content: message.text }));
-    const userContent = `Materia: ${input.subject}\nMod: ${input.mode}\nÎntrebarea elevului: ${input.question || "Analizează enunțul din fișierele atașate și ajută-mă cu primul pas."}`;
+    const userContent = `Materia: ${input.subject}\nMod: ${input.mode}\nClasa: ${input.schoolGrade ?? "nespecificată"}\nNivel declarat: ${input.learnerLevel ?? "nespecificat"}\nScor mini-quiz inițial (orientativ): ${input.diagnosticScore === undefined ? "indisponibil" : `${input.diagnosticScore}/3`}\nTeme declarate ca studiate: ${input.studiedTopics?.length ? input.studiedTopics.join(", ") : "niciuna declarată; pornește de la noțiunile de bază și verifică ce știe elevul"}\nÎntrebarea elevului: ${input.question || "Analizează enunțul din fișierele atașate și ajută-mă cu primul pas."}`;
     const attachments = [
       ...(input.attachment ? [input.attachment] : []),
       ...(input.attachments ?? []),

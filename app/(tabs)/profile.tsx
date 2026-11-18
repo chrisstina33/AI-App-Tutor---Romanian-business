@@ -45,6 +45,7 @@ export default function ProfileScreen() {
   const [parentCode, setParentCode] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [accountNotice, setAccountNotice] = useState("");
+  const [accountNoticeIsError, setAccountNoticeIsError] = useState(false);
   const [avatarNotice, setAvatarNotice] = useState(false);
   const [premiumDetails, setPremiumDetails] = useState(false);
   const signUpMutation = trpc.auth.signUp.useMutation();
@@ -60,32 +61,36 @@ export default function ProfileScreen() {
   });
   const checkoutMutation = trpc.billing.createCheckout.useMutation();
   const portalMutation = trpc.billing.createPortal.useMutation();
+  function showAccountNotice(message: string, isError = false) {
+    setAccountNotice(message);
+    setAccountNoticeIsError(isError);
+  }
   async function submitAccount() {
-    setAccountNotice("");
+    showAccountNotice("");
     try {
       const response = authMode === "signup"
         ? await signUpMutation.mutateAsync({ name: accountName || preferences.displayName, email: accountEmail, password: accountPassword, accountType })
         : await signInMutation.mutateAsync({ email: accountEmail, password: accountPassword });
       await beginSession(response.session.token, response.user);
       if (response.user.accountType === "student" && authMode === "signup") updatePreferences({ displayName: response.user.name });
-      setAccountNotice("Contul este activ. Progresul elevului se sincronizează cu serverul.");
+      showAccountNotice("Contul este activ. Progresul elevului se sincronizează cu serverul.");
       setAccountPassword("");
-    } catch (error) { setAccountNotice(error instanceof Error ? error.message : "Autentificarea nu a reușit."); }
+    } catch (error) { showAccountNotice(error instanceof Error ? error.message : "Autentificarea nu a reușit.", true); }
   }
   async function createInvite() {
-    try { const result = await inviteMutation.mutateAsync(); setParentCode(result.code); setAccountNotice("Cod valabil 30 de minute. Trimite-l părintelui pentru asociere."); }
-    catch (error) { setAccountNotice(error instanceof Error ? error.message : "Codul nu a putut fi creat."); }
+    try { const result = await inviteMutation.mutateAsync(); setParentCode(result.code); showAccountNotice("Cod valabil 30 de minute. Trimite-l părintelui pentru asociere."); }
+    catch (error) { showAccountNotice(error instanceof Error ? error.message : "Codul nu a putut fi creat.", true); }
   }
   async function connectStudent() {
-    try { await linkMutation.mutateAsync({ code: inviteCode }); setInviteCode(""); await parentOverview.refetch(); setAccountNotice("Contul elevului a fost asociat."); }
-    catch (error) { setAccountNotice(error instanceof Error ? error.message : "Asocierea nu a reușit."); }
+    try { await linkMutation.mutateAsync({ code: inviteCode }); setInviteCode(""); await parentOverview.refetch(); showAccountNotice("Contul elevului a fost asociat."); }
+    catch (error) { showAccountNotice(error instanceof Error ? error.message : "Asocierea nu a reușit.", true); }
   }
   async function startCheckout() {
     try {
       const session = await checkoutMutation.mutateAsync();
       await Linking.openURL(session.url);
     } catch (error) {
-      setAccountNotice(error instanceof Error ? error.message : "Checkout-ul nu a putut fi deschis.");
+      showAccountNotice(error instanceof Error ? error.message : "Checkout-ul nu a putut fi deschis.", true);
     }
   }
   async function manageSubscription() {
@@ -93,13 +98,13 @@ export default function ProfileScreen() {
       const session = await portalMutation.mutateAsync();
       await Linking.openURL(session.url);
     } catch (error) {
-      setAccountNotice(error instanceof Error ? error.message : "Administrarea abonamentului nu a putut fi deschisă.");
+      showAccountNotice(error instanceof Error ? error.message : "Administrarea abonamentului nu a putut fi deschisă.", true);
     }
   }
   async function signOut() {
     try { await signOutMutation.mutateAsync(); } catch { /* Expired sessions can still be cleared locally. */ }
     await endSession();
-    setAccountNotice("Ai ieșit din cont.");
+    showAccountNotice("Ai ieșit din cont.");
   }
   function updatePreferences(patch: Partial<Preferences>) {
     saveLearnerPreferences(patch);
@@ -584,7 +589,7 @@ export default function ProfileScreen() {
             <Pressable onPress={() => setAuthMode((value) => value === "signup" ? "signin" : "signup")} style={{ paddingVertical: 12 }}><Text style={[styles.premiumActionText, { color: colors.primary }]}>{authMode === "signup" ? "Am deja un cont" : "Creează un cont nou"}</Text></Pressable>
             <Text style={[styles.accountBody, { color: colors.muted }]}>Conturile au nevoie de server cu baza de date configurată. Pentru elevi minori, creați asocierea cu părintele înainte de pilot.</Text>
           </>}
-          {accountNotice ? <Text accessibilityRole="alert" style={[styles.accountBody, { color: accountNotice.includes("eșuat") || accountNotice.includes("eroare") ? colors.error : colors.success, marginTop: 10 }]}>{accountNotice}</Text> : null}
+          {accountNotice ? <Text accessibilityRole="alert" style={[styles.accountBody, { color: accountNoticeIsError ? colors.error : colors.success, marginTop: 10 }]}>{accountNotice}</Text> : null}
         </SurfaceCard>
         {saved ? (
           <View style={styles.savedToast}>

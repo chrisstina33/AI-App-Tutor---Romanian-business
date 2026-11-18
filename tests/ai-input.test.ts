@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { invokeTutorWithFallback, isImageGenerationRequest, modelFor, parseTutorResponse, tutorChatInputSchema } from "../server/ai";
 import { buildQuickActionQuestion, googleImagesSearchUrl } from "../services/ai-service";
+import { parseAdditionalTopics } from "../services/tutor-onboarding";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -8,6 +9,11 @@ afterEach(() => {
 });
 
 describe("tutor quick actions", () => {
+  it("cleans up manually entered curriculum topics", () => {
+    expect(parseAdditionalTopics(" Ecuații, Funcții, Ecuații, , Proporții "))
+      .toEqual(["Ecuații", "Funcții", "Proporții"]);
+  });
+
   it("requires the learner's own work before checking a step", () => {
     expect(buildQuickActionQuestion("check", "  ")).toBeNull();
     expect(buildQuickActionQuestion("check", "", true)).toBe(
@@ -55,6 +61,28 @@ describe("tutor chat input", () => {
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it("accepts a bounded list of curriculum topics", () => {
+    expect(tutorChatInputSchema.safeParse({
+      ...baseInput,
+      studiedTopics: ["Ecuații", "Funcții și grafice"],
+    }).success).toBe(true);
+    expect(tutorChatInputSchema.safeParse({
+      ...baseInput,
+      studiedTopics: Array.from({ length: 31 }, (_, index) => `Temă ${index}`),
+    }).success).toBe(false);
+  });
+
+  it("accepts only a three-question diagnostic quiz score", () => {
+    expect(tutorChatInputSchema.safeParse({
+      ...baseInput,
+      diagnosticScore: 0,
+    }).success).toBe(true);
+    expect(tutorChatInputSchema.safeParse({
+      ...baseInput,
+      diagnosticScore: 4,
+    }).success).toBe(false);
   });
 
   it("accepts multiple photos but rejects attachment payloads over the request budget", () => {

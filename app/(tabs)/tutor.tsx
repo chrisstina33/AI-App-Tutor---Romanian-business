@@ -30,6 +30,7 @@ import {
   SurfaceCard,
 } from "@/components/bionis-ui";
 import { TutorMessageCard, UploadCard } from "@/components/tutor-components";
+import { TutorOnboarding } from "@/components/tutor-onboarding";
 import { useColors } from "@/hooks/use-colors";
 import { useLearnerData } from "@/lib/learner-context";
 import { SUBJECTS } from "@/lib/app-data";
@@ -85,7 +86,7 @@ async function readBase64(uri: string): Promise<string> {
 
 export default function TutorScreen() {
   const colors = useColors();
-  const { recordQuestion, state: learnerState } = useLearnerData();
+  const { recordQuestion, state: learnerState, loading: learnerLoading, updatePreferences } = useLearnerData();
   const params = useLocalSearchParams<{ autoUpload?: string; subject?: string; lessonId?: string }>();
   const [subject, setSubject] = useState(
     () => SUBJECTS.find((item) => item.label === params.subject)?.label ?? SUBJECTS[0].label,
@@ -105,6 +106,7 @@ export default function TutorScreen() {
   const [showVoiceDisclosure, setShowVoiceDisclosure] = useState(false);
   const [recording, setRecording] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [showTutorSetup, setShowTutorSetup] = useState(false);
   const scrollRef = useRef<ScrollViewInstance>(null);
   const assistantMutation = trpc.assistant.chat.useMutation();
   const voiceMutation = trpc.assistant.transcribe.useMutation();
@@ -242,6 +244,12 @@ export default function TutorScreen() {
         learnerLevel: learnerState.preferences?.level,
         schoolGrade: learnerState.preferences?.schoolGrade,
         explanationStyle: learnerState.preferences?.explanationStyle,
+        studiedTopics: learnerState.preferences?.studiedTopicsSubject === subject
+          ? learnerState.preferences.studiedTopics
+          : [],
+        diagnosticScore: learnerState.preferences?.diagnosticSubject === subject
+          ? learnerState.preferences.diagnosticScore
+          : undefined,
         visualMode: agent === "Explicație vizuală" || learnerState.preferences?.explanationStyle === "Detaliat și vizual",
         messages: history.slice(-12),
         ...(attachments.length ? { attachments } : {}),
@@ -438,6 +446,12 @@ export default function TutorScreen() {
         learnerLevel: learnerState.preferences?.level,
         schoolGrade: learnerState.preferences?.schoolGrade,
         explanationStyle: learnerState.preferences?.explanationStyle,
+        studiedTopics: learnerState.preferences?.studiedTopicsSubject === pdfSubject
+          ? learnerState.preferences.studiedTopics
+          : [],
+        diagnosticScore: learnerState.preferences?.diagnosticSubject === pdfSubject
+          ? learnerState.preferences.diagnosticScore
+          : undefined,
         visualMode: agent === "Explicație vizuală" || learnerState.preferences?.explanationStyle === "Detaliat și vizual",
         messages: lessonMessages.slice(-10).map((message) => ({
           role: message.role,
@@ -515,7 +529,7 @@ export default function TutorScreen() {
             eyebrow={ro.tutorEyebrow}
             title={ro.tutor}
             compact
-            action={<IconButton icon="more-horiz" label="Mai multe opțiuni" size={36} />}
+            action={<IconButton icon="tune" label="Configurează nivelul și programa" onPress={() => setShowTutorSetup(true)} size={36} />}
           />
         </View>
         <View style={styles.controlRow}>
@@ -868,6 +882,34 @@ export default function TutorScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
+      {showTutorSetup || (!learnerLoading && !learnerState.preferences.tutorSetupComplete) ? (
+        <TutorOnboarding
+          canDismiss={learnerState.preferences.tutorSetupComplete}
+          subject={subject}
+          schoolGrade={learnerState.preferences.schoolGrade}
+          level={learnerState.preferences.level}
+          studiedTopics={
+            learnerState.preferences.studiedTopicsSubject === subject
+              ? learnerState.preferences.studiedTopics
+              : []
+          }
+          onClose={() => setShowTutorSetup(false)}
+          onComplete={(setup) => {
+            setSubject(setup.subject);
+            updatePreferences({
+              schoolGrade: setup.schoolGrade,
+              level: setup.level,
+              studiedTopics: setup.studiedTopics,
+              studiedTopicsSubject: setup.subject,
+              diagnosticScore: setup.diagnosticScore,
+              diagnosticSubject: setup.subject,
+              tutorSetupComplete: true,
+            });
+            setShowTutorSetup(false);
+            setNotice("Nivelul și temele studiate au fost salvate. Explicațiile vor porni de aici.");
+          }}
+        />
+      ) : null}
     </ScreenContainer>
   );
 }
