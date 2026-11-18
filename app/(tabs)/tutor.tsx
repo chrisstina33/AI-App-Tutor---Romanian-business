@@ -42,8 +42,10 @@ import {
   type PendingUpload,
 } from "@/lib/storage";
 import {
+  loadTutorSessionId,
   loadSavedTutorLesson,
   loadTutorMessages,
+  saveTutorSessionId,
   saveTutorLesson,
   saveTutorMessages,
 } from "@/lib/tutor-storage";
@@ -92,6 +94,8 @@ export default function TutorScreen() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<TutorMessage[]>([INITIAL_MESSAGE]);
   const [messagesLoaded, setMessagesLoaded] = useState(false);
+  const [sessionId, setSessionId] = useState(() => createMessageId("session"));
+  const [lessonSaved, setLessonSaved] = useState(false);
   const [pending, setPending] = useState(false);
   const [mode, setMode] = useState<TutorMode>("guided");
   const [uploads, setUploads] = useState<PendingUpload[]>([]);
@@ -126,7 +130,15 @@ export default function TutorScreen() {
         ? await loadSavedTutorLesson(params.lessonId)
         : null;
       const savedMessages = savedLesson?.messages ?? await loadTutorMessages();
+      const activeSessionId =
+        savedLesson?.sessionId ??
+        savedLesson?.id ??
+        (await loadTutorSessionId()) ??
+        createMessageId("session");
+      if (!savedLesson) await saveTutorSessionId(activeSessionId);
       if (!active) return;
+      setSessionId(activeSessionId);
+      setLessonSaved(Boolean(savedLesson));
       if (savedLesson) {
         setMessages(savedLesson.messages);
         setSubject(savedLesson.subject);
@@ -179,7 +191,7 @@ export default function TutorScreen() {
       analysis?: TutorMessage["analysis"];
     },
     requestedMode: TutorMode,
-  ) {
+  ): Promise<TutorMessage> {
     const id = createMessageId("assistant");
     const next: TutorMessage = {
       id,
@@ -196,10 +208,12 @@ export default function TutorScreen() {
     };
     setMessages((current) => [...current, next]);
     setNotice(`${ro.liveTutor} · ${reply.model ?? "model AI"}${reply.analysis?.confidence !== undefined && reply.analysis.confidence >= 0.8 && reply.analysis.subject !== "necunoscut" ? ` · Materie detectată: ${reply.analysis.subject}.` : ""}`);
+    return next;
   }
   async function submitQuestion(text: string, requestedMode: TutorMode = mode) {
     const question = text.trim();
-    if ((!question && !uploads.length) || pending) return;
+    if ((!question && !uploads.length) || pending || !messagesLoaded) return;
+    const submittedUploads = uploads;
     const questionText = question || `Ajută-mă să înțeleg tema atașată (${uploads.map((file) => file.name).join(", ")}).`;
     setInput("");
     setPending(true);
@@ -213,7 +227,7 @@ export default function TutorScreen() {
     setMessages((current) => [...current, userMessage]);
     let recordedQuestion = false;
     try {
-      const attachments = await Promise.all(uploads.map(async (file) => ({
+      const attachments = await Promise.all(submittedUploads.map(async (file) => ({
         name: file.name,
         mimeType: (file.mimeType ?? "text/plain") as "image/png" | "image/jpeg" | "application/pdf" | "text/plain",
         base64: await readBase64(file.uri),
@@ -232,6 +246,10 @@ export default function TutorScreen() {
         messages: history.slice(-12),
         ...(attachments.length ? { attachments } : {}),
       });
+      if (submittedUploads.length) {
+        setUploads([]);
+        await clearPendingUploads();
+      }
       const confidentSubject = live.analysis && live.analysis.confidence >= 0.8 && live.analysis.subject !== "necunoscut"
         ? live.analysis.subject
         : null;
@@ -252,17 +270,28 @@ export default function TutorScreen() {
         analysis: live.analysis,
         createdAt: currentTimestamp(),
       };
-      await addReply(live, requestedMode);
+      const assistantMessage = await addReply(live, requestedMode);
+      if (lessonSaved) {
+        try {
+          await saveTutorLesson(sessionId, effectiveSubject, [
+            ...messages,
+            userMessage,
+            assistantMessage,
+          ]);
+        } catch (error) {
+          console.error(
+            "[Tutor] Saved lesson update failed",
+            error instanceof Error ? error.message : "unknown error",
+          );
+          setNotice("Răspunsul a fost primit, dar lecția salvată nu a putut fi actualizată.");
+        }
+      }
       if (requestedMode === "check" && live.analysis?.mastery === "demonstrated") {
         if (Platform.OS === "web") {
           setNotice("Pasul este corect. Poți genera fișa PDF folosind butonul «Descarcă fișa PDF».");
         } else {
           await exportPdf([userMessage, pdfReply], effectiveSubject);
         }
-      }
-      if (uploads.length) {
-        setUploads([]);
-        await clearPendingUploads();
       }
     } catch (error) {
       if (!recordedQuestion) recordQuestion(subject);
@@ -377,7 +406,8 @@ export default function TutorScreen() {
   }
   async function saveCurrentLesson() {
     try {
-      const lesson = await saveTutorLesson(subject, messages);
+      const lesson = await saveTutorLesson(sessionId, subject, messages);
+      setLessonSaved(true);
       setNotice(`Lecția „${lesson.title}” a fost salvată pe acest dispozitiv.`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Lecția nu a putut fi salvată.");
@@ -415,7 +445,7 @@ export default function TutorScreen() {
         })),
       });
       const formulas =
-        studyGuide.text.match(/\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\]/g) ?? [];
+        studyGuide.text.match(/\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\]|\$\$[\s\S]+?\$\$|\$[^$\n]+?\$/g) ?? [];
       await generateLearningPdf(`Fișă de recapitulare · ${pdfSubject}`, [
         { heading: "Materia", body: pdfSubject },
         {

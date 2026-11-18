@@ -12,7 +12,8 @@ function escapeHtml(value: string): string {
 }
 
 function renderMathInBody(value: string): string {
-  const expression = /\\\(([\s\S]+?)\\\)|\\\[([\s\S]+?)\\\]/g;
+  const expression =
+    /\\\(([\s\S]+?)\\\)|\\\[([\s\S]+?)\\\]|\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$/g;
   let output = "";
   let cursor = 0;
   let match: RegExpExecArray | null;
@@ -22,8 +23,8 @@ function renderMathInBody(value: string): string {
       /\n/g,
       "<br />",
     );
-    const display = match[2] !== undefined;
-    const formula = match[1] ?? match[2] ?? "";
+    const display = match[2] !== undefined || match[3] !== undefined;
+    const formula = match[1] ?? match[2] ?? match[3] ?? match[4] ?? "";
     const delimiters = display ? ["\\[", "\\]"] : ["\\(", "\\)"];
     const source = `${delimiters[0]}${escapeHtml(formula)}${delimiters[1]}`;
     const fallback = escapeHtml(formatLatexForDisplay(formula));

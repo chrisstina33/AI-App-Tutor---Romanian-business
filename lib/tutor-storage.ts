@@ -4,6 +4,7 @@ import { tutorDiagramSchema } from "../shared/tutor-diagram";
 import type { TutorMessage } from "../services/ai-service";
 
 const STORAGE_KEY = "elunariq.tutor-messages.v1";
+const SESSION_ID_KEY = "elunariq.tutor-session-id.v1";
 const SAVED_LESSONS_KEY = "elunariq.saved-tutor-lessons.v1";
 const tutorMessageSchema = z.object({
   id: z.string().min(1),
@@ -27,6 +28,7 @@ const tutorMessageSchema = z.object({
 const tutorMessagesSchema = z.array(tutorMessageSchema).max(100);
 const savedTutorLessonSchema = z.object({
   id: z.string().min(1),
+  sessionId: z.string().min(1).optional(),
   title: z.string().min(1).max(200),
   subject: z.string().min(1).max(80),
   savedAt: z.string().datetime(),
@@ -57,12 +59,47 @@ export async function saveTutorMessages(messages: TutorMessage[]): Promise<void>
   }
 }
 
+export async function loadTutorSessionId(): Promise<string | null> {
+  try {
+    return (await AsyncStorage.getItem(SESSION_ID_KEY)) || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveTutorSessionId(sessionId: string): Promise<void> {
+  await AsyncStorage.setItem(SESSION_ID_KEY, sessionId);
+}
+
+function deduplicateLessons(lessons: SavedTutorLesson[]): SavedTutorLesson[] {
+  const seenSessions = new Set<string>();
+  const seenMessageLists = new Set<string>();
+  return lessons.filter((lesson) => {
+    const sessionId = lesson.sessionId ?? lesson.id;
+    const messageList = lesson.messages.map((message) => message.id).join(",");
+    if (
+      seenSessions.has(sessionId) ||
+      (messageList.length > 0 && seenMessageLists.has(messageList))
+    ) {
+      return false;
+    }
+    seenSessions.add(sessionId);
+    if (messageList) seenMessageLists.add(messageList);
+    return true;
+  });
+}
+
 export async function loadSavedTutorLessons(): Promise<SavedTutorLesson[]> {
   try {
     const serialized = await AsyncStorage.getItem(SAVED_LESSONS_KEY);
     if (!serialized) return [];
     const parsed = savedTutorLessonsSchema.safeParse(JSON.parse(serialized));
-    return parsed.success ? parsed.data : [];
+    if (!parsed.success) return [];
+    const lessons = deduplicateLessons(parsed.data);
+    if (lessons.length !== parsed.data.length) {
+      await AsyncStorage.setItem(SAVED_LESSONS_KEY, JSON.stringify(lessons));
+    }
+    return lessons;
   } catch {
     return [];
   }
@@ -75,6 +112,7 @@ export async function loadSavedTutorLesson(
 }
 
 export async function saveTutorLesson(
+  sessionId: string,
   subject: string,
   messages: TutorMessage[],
 ): Promise<SavedTutorLesson> {
@@ -86,16 +124,20 @@ export async function saveTutorLesson(
   }
   const firstQuestion = lessonMessages.find((message) => message.role === "user")?.text;
   const lesson = savedTutorLessonSchema.parse({
-    id: `lesson-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    id: sessionId,
+    sessionId,
     title: (firstQuestion ?? subject).slice(0, 200),
     subject,
     savedAt: new Date().toISOString(),
     messages: lessonMessages.slice(-100),
   });
   const existing = await loadSavedTutorLessons();
+  const uniqueExisting = existing.filter(
+    (item) => item.id !== sessionId && item.sessionId !== sessionId,
+  );
   await AsyncStorage.setItem(
     SAVED_LESSONS_KEY,
-    JSON.stringify([lesson, ...existing].slice(0, 50)),
+    JSON.stringify([lesson, ...uniqueExisting].slice(0, 50)),
   );
   return lesson;
 }

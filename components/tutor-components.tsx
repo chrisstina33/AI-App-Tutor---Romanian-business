@@ -14,7 +14,11 @@ import {
 } from "react-native";
 import { useColors } from "@/hooks/use-colors";
 import type { PendingUpload } from "@/lib/storage";
-import { formatLatexForDisplay, splitMathSegments } from "@/lib/math-format";
+import {
+  formatLatexForDisplay,
+  sanitizeTutorMathText,
+  splitMathSegments,
+} from "@/lib/math-format";
 import type { TutorMessage } from "@/services/ai-service";
 import { LearningDiagram } from "@/components/learning-diagram";
 import { getApiBaseUrl } from "@/constants/api";
@@ -70,7 +74,10 @@ export function TutorMessageCard({ message }: { message: TutorMessage }) {
             {message.analysis.mastery === "demonstrated" ? " · înțelegere demonstrată" : ""}
           </Text>
         ) : null}
-        {message.text.split("\n").map((line, index) => {
+        {sanitizeTutorMathText(message.text)
+          .split("\n")
+          .filter((line) => line.trim().length > 0)
+          .map((line, index) => {
           const heading = line.startsWith("#");
           const bullet = line.startsWith("-") || /^\d\./.test(line);
           return (
@@ -100,7 +107,7 @@ export function TutorMessageCard({ message }: { message: TutorMessage }) {
               )}
             </Text>
           );
-        })}
+          })}
         {assistant && message.imageUrl ? (
           <Image
             accessibilityLabel="Imagine educațională generată"

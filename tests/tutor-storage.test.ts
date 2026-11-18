@@ -45,11 +45,49 @@ describe("on-device tutor lesson storage", () => {
       { id: "answer-1", role: "assistant", text: "Împarte ambii membri la 2.", createdAt: 2 },
     ];
 
-    const lesson = await saveTutorLesson("Matematică", messages);
+    const lesson = await saveTutorLesson("session-1", "Matematică", messages);
 
     expect(lesson.title).toBe("Ecuația 2x = 8");
     expect(lesson.subject).toBe("Matematică");
+    expect(lesson.id).toBe("session-1");
+    expect(lesson.sessionId).toBe("session-1");
     expect(await loadSavedTutorLesson(lesson.id)).toEqual(lesson);
     expect(await loadSavedTutorLessons()).toEqual([lesson]);
+  });
+
+  it("updates an existing lesson for the same chat session", async () => {
+    const original: TutorMessage[] = [
+      { id: "question-1", role: "user", text: "Ecuația 2x = 8", createdAt: 1 },
+      { id: "answer-1", role: "assistant", text: "Împarte la 2.", createdAt: 2 },
+    ];
+    const updated: TutorMessage[] = [
+      ...original,
+      { id: "question-2", role: "user", text: "De ce?", createdAt: 3 },
+    ];
+
+    await saveTutorLesson("session-1", "Matematică", original);
+    await saveTutorLesson("session-1", "Matematică", updated);
+
+    const lessons = await loadSavedTutorLessons();
+    expect(lessons).toHaveLength(1);
+    expect(lessons[0].messages).toEqual(updated);
+  });
+
+  it("deduplicates legacy lessons with the same conversation on load", async () => {
+    const lesson = {
+      id: "legacy-1",
+      title: "Ecuația 2x = 8",
+      subject: "Matematică",
+      savedAt: new Date().toISOString(),
+      messages: [
+        { id: "question-1", role: "user", text: "Ecuația 2x = 8", createdAt: 1 },
+      ],
+    };
+    storage.set(
+      "elunariq.saved-tutor-lessons.v1",
+      JSON.stringify([{ ...lesson }, { ...lesson, id: "legacy-2" }]),
+    );
+
+    expect(await loadSavedTutorLessons()).toHaveLength(1);
   });
 });

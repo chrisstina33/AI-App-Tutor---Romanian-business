@@ -1,5 +1,51 @@
 export type MathSegment = { value: string; isMath: boolean };
 
+export function sanitizeTutorMathText(input: string): string {
+  let value = input.replace(
+    /^[ \t]*\[[ \t]*\n([\s\S]*?)\n[ \t]*\][ \t]*$/gm,
+    (_match, formula: string) => `$$${formula}$$`,
+  );
+
+  value = value
+    .replace(/\$\$([\s\S]+?)\$\$/g, (_match, formula: string) =>
+      `\\[${formula.replace(/\s*\n\s*/g, " ").trim()}\\]`,
+    )
+    .replace(/\$([^$\n]+?)\$/g, (_match, formula: string) => `\\(${formula}\\)`);
+
+  const savedEnvironments: string[] = [];
+  value = value.replace(/\\(?:begin|end)\{[pbv]matrix\}/g, (environment) => {
+    const token = `\u0000MATRIX${savedEnvironments.length}\u0000`;
+    savedEnvironments.push(environment);
+    return token;
+  });
+
+  value = value.replace(
+    /(?<![\\a-zA-Z])(pmatrix|bmatrix|vmatrix)([\s\S]*?)(?<!\\)\1/g,
+    (_match, environment: string, body: string) =>
+      `\\begin{${environment}}${body.replace(/;\s*/g, " \\\\ ")}\\end{${environment}}`,
+  );
+
+  value = value.replace(
+    /\\\(([\s\S]*?)\\\)|\\\[([\s\S]*?)\\\]/g,
+    (match, inline: string | undefined, display: string | undefined) => {
+      const formula = inline ?? display ?? "";
+      const repaired = formula.replace(
+        /(?<![\\a-zA-Z])(?:sum|prod|int|frac|sqrt|binom|cdot|times|pm|neq|leq|geq|rightarrow|infty)(?=$|[^a-zA-Z])/g,
+        (command) => `\\${command}`,
+      );
+      return inline !== undefined
+        ? `\\(${repaired}\\)`
+        : `\\[${repaired}\\]`;
+    },
+  );
+
+  value = value.replace(/\u0000MATRIX(\d+)\u0000/g, (_match, index: string) =>
+    savedEnvironments[Number(index)],
+  );
+
+  return value.replace(/\n{3,}/g, "\n\n");
+}
+
 const COMMANDS: Record<string, string> = {
   alpha: "α",
   beta: "β",
@@ -99,6 +145,14 @@ function scriptCharacters(
 /** Readable fallback for native text and offline PDF printing; full PDF typesetting uses MathJax. */
 export function formatLatexForDisplay(input: string): string {
   let value = input
+    .replace(
+      /\\begin\{(p|b|v)matrix\}([\s\S]*?)\\end\{\1matrix\}/g,
+      (_match, type: string, body: string) => {
+        const [open, close] =
+          type === "p" ? ["[", "]"] : type === "b" ? ["⎡", "⎤"] : ["|", "|"];
+        return `${open}${body.replace(/\s*\\\\\s*/g, "; ").replace(/&/g, " ")}${close}`;
+      },
+    )
     .replace(/\\(?:left|right|displaystyle|textstyle)\b/g, "")
     .replace(/\\(?:,|;|!|quad|qquad)\b/g, " ");
 
@@ -140,14 +194,18 @@ export function formatLatexForDisplay(input: string): string {
 
 export function splitMathSegments(line: string): MathSegment[] {
   const segments: MathSegment[] = [];
-  const expression = /\\\(([\s\S]+?)\\\)|\\\[([\s\S]+?)\\\]/g;
+  const expression =
+    /\\\(([\s\S]+?)\\\)|\\\[([\s\S]+?)\\\]|\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$/g;
   let cursor = 0;
   let match: RegExpExecArray | null;
 
   while ((match = expression.exec(line))) {
     if (match.index > cursor)
       segments.push({ value: line.slice(cursor, match.index), isMath: false });
-    segments.push({ value: match[1] ?? match[2] ?? "", isMath: true });
+    segments.push({
+      value: match[1] ?? match[2] ?? match[3] ?? match[4] ?? "",
+      isMath: true,
+    });
     cursor = expression.lastIndex;
   }
 
