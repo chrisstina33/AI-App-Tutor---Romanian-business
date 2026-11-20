@@ -85,6 +85,8 @@ export function TutorOnboarding({
     () => getDiagnosticQuestions(selectedSubject),
     [selectedSubject],
   );
+  const currentQuestion = questions[questionIndex];
+  const isQuizStep = step >= 4;
   const suggestedTopics = useMemo(
     () => getSuggestedTopics(selectedSubject),
     [selectedSubject],
@@ -92,18 +94,12 @@ export function TutorOnboarding({
   const totalSteps = 4 + questions.length;
   const currentStep = quizFinished
     ? totalSteps
-    : step === 0
-      ? 1
-      : step === 1
-        ? 2
-        : step === 2
-          ? 3
-          : step === 3
-            ? 4
-            : 5 + questionIndex;
+    : isQuizStep
+      ? Math.min(totalSteps, 5 + questionIndex)
+      : step + 1;
   const correctAnswers =
     answers.filter(Boolean).length +
-    (selectedAnswer === questions[questionIndex]?.correctIndex ? 1 : 0);
+    (selectedAnswer === currentQuestion?.correctIndex ? 1 : 0);
 
   useEffect(() => {
     animation.setValue(0);
@@ -125,10 +121,10 @@ export function TutorOnboarding({
   }
 
   function submitAnswer() {
-    if (selectedAnswer === null) return;
+    if (selectedAnswer === null || !currentQuestion) return;
     setAnswers((current) => [
       ...current,
-      selectedAnswer === questions[questionIndex].correctIndex,
+      selectedAnswer === currentQuestion.correctIndex,
     ]);
     setSelectedAnswer(null);
     if (questionIndex < questions.length - 1) {
@@ -151,7 +147,7 @@ export function TutorOnboarding({
       schoolGrade: selectedGrade,
       level: selectedLevel,
       studiedTopics: topics,
-      diagnosticScore: correctAnswers,
+      diagnosticScore: answers.filter(Boolean).length,
       diagnosticAnswers: answers,
     });
   }
@@ -259,6 +255,9 @@ export function TutorOnboarding({
                       />
                     ))}
                   </View>
+                  <Text style={[styles.description, { color: colors.muted, marginTop: 10, marginBottom: 0 }]}>
+                    Clasa este opțională. Poți continua fără să o precizezi.
+                  </Text>
                 </>
               ) : null}
 
@@ -368,7 +367,7 @@ export function TutorOnboarding({
                 </>
               ) : null}
 
-              {step === 4 && !quizFinished ? (
+              {isQuizStep && !quizFinished && currentQuestion ? (
                 <>
                   <Text style={[styles.questionTitle, { color: colors.foreground }]}>
                     Mini-quiz · {selectedSubject}
@@ -383,10 +382,10 @@ export function TutorOnboarding({
                     </Text>
                   </View>
                   <Text style={[styles.quizQuestion, { color: colors.foreground }]}>
-                    {questions[questionIndex].question}
+                    {currentQuestion.question}
                   </Text>
                   <View style={styles.answerList}>
-                    {questions[questionIndex].options.map((option, index) => (
+                    {currentQuestion.options.map((option, index) => (
                       <Pressable
                         key={option}
                         accessibilityRole="button"
@@ -429,10 +428,28 @@ export function TutorOnboarding({
                       </Pressable>
                     ))}
                   </View>
+                  {selectedAnswer !== null ? (
+                    <Text style={[styles.description, { color: colors.muted, marginTop: 10, marginBottom: 0 }]}>
+                      {selectedAnswer === currentQuestion.correctIndex
+                        ? "Răspuns potrivit. Continuă la următoarea întrebare."
+                        : "Nu este varianta potrivită. Reține tema pentru recapitulare."}
+                    </Text>
+                  ) : null}
                 </>
               ) : null}
 
-              {step === 4 && quizFinished ? (
+              {isQuizStep && !quizFinished && !currentQuestion ? (
+                <View>
+                  <Text style={[styles.questionTitle, { color: colors.foreground }]}>
+                    Mini-quizul nu este disponibil acum.
+                  </Text>
+                  <Text style={[styles.description, { color: colors.muted }]}>
+                    Poți continua fără diagnostic și poți începe direct conversația.
+                  </Text>
+                </View>
+              ) : null}
+
+              {isQuizStep && quizFinished ? (
                 <View style={styles.result}>
                   <View style={[styles.resultIcon, { backgroundColor: `${colors.success}18` }]}>
                     <MaterialIcons name="celebration" size={31} color={colors.success} />
@@ -452,11 +469,22 @@ export function TutorOnboarding({
           </ScrollView>
 
           <View style={styles.footer}>
+            {isQuizStep && !quizFinished ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={finishSetup}
+                style={styles.skipQuizButton}
+              >
+                <Text style={[styles.backText, { color: colors.muted }]}>
+                  Sari peste mini-quiz
+                </Text>
+              </Pressable>
+            ) : null}
             {step > 0 && !quizFinished ? (
               <Pressable
                 accessibilityRole="button"
                 onPress={() => {
-                  if (step === 4) {
+                  if (isQuizStep) {
                     if (questionIndex > 0) {
                       setQuestionIndex((current) => current - 1);
                       setAnswers((current) => current.slice(0, -1));
@@ -471,12 +499,13 @@ export function TutorOnboarding({
             ) : null}
             <Pressable
               accessibilityRole="button"
-              disabled={step === 4 && !quizFinished && selectedAnswer === null}
+              disabled={isQuizStep && !quizFinished && currentQuestion !== undefined && selectedAnswer === null}
               onPress={() => {
                 if (quizFinished) {
                   finishSetup();
-                } else if (step === 4) {
-                  submitAnswer();
+                } else if (isQuizStep) {
+                  if (currentQuestion) submitAnswer();
+                  else finishSetup();
                 } else {
                   setStep((current) => current + 1);
                 }
@@ -485,7 +514,7 @@ export function TutorOnboarding({
                 styles.nextButton,
                 {
                   backgroundColor:
-                    step === 4 && !quizFinished && selectedAnswer === null
+                    isQuizStep && !quizFinished && currentQuestion !== undefined && selectedAnswer === null
                       ? colors.border
                       : colors.primary,
                 },
@@ -494,11 +523,15 @@ export function TutorOnboarding({
               <Text style={styles.nextText}>
                 {quizFinished
                   ? "Începem să învățăm"
-                  : step === 4
-                    ? questionIndex === questions.length - 1
-                      ? "Vezi rezultatul"
-                      : "Următoarea întrebare"
-                    : "Continuă"}
+                  : isQuizStep
+                    ? currentQuestion
+                      ? questionIndex === questions.length - 1
+                        ? "Vezi rezultatul"
+                        : "Următoarea întrebare"
+                      : "Continuă fără mini-quiz"
+                    : step === 0 && selectedGrade === "Nu o precizez"
+                      ? "Continuă fără clasă"
+                      : "Continuă"}
               </Text>
               <MaterialIcons
                 name={quizFinished ? "rocket-launch" : "arrow-forward"}
@@ -553,10 +586,12 @@ const styles = StyleSheet.create({
   card: {
     width: "100%",
     maxWidth: 560,
-    maxHeight: "92%",
+    height: "92%",
+    maxHeight: 560,
     borderRadius: 24,
     padding: 20,
     overflow: "hidden",
+    flexDirection: "column",
   },
   header: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 15 },
   iconWrap: { width: 44, height: 44, borderRadius: 15, alignItems: "center", justifyContent: "center" },
@@ -567,7 +602,7 @@ const styles = StyleSheet.create({
   progressTrack: { height: 5, borderRadius: 4, overflow: "hidden" },
   progressFill: { height: "100%", borderRadius: 4 },
   stepLabel: { fontSize: 9, fontWeight: "800", letterSpacing: 1.2, marginTop: 9, marginBottom: 8 },
-  content: { flexGrow: 0, flexShrink: 1 },
+  content: { flex: 1, minHeight: 0 },
   contentInner: { paddingBottom: 10 },
   questionTitle: { fontSize: 19, lineHeight: 24, fontWeight: "900", marginTop: 6 },
   description: { fontSize: 12, lineHeight: 18, marginTop: 5, marginBottom: 14 },
@@ -597,6 +632,7 @@ const styles = StyleSheet.create({
   resultScore: { fontSize: 14, fontWeight: "900", marginTop: 10 },
   resultCopy: { textAlign: "center", maxWidth: 380 },
   footer: { flexDirection: "row", justifyContent: "flex-end", gap: 8, paddingTop: 10 },
+  skipQuizButton: { minHeight: 44, paddingHorizontal: 8, alignItems: "center", justifyContent: "center" },
   backButton: { minHeight: 44, paddingHorizontal: 14, borderRadius: 13, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   backText: { fontSize: 12, fontWeight: "800" },
   nextButton: { minHeight: 44, paddingHorizontal: 15, borderRadius: 13, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },

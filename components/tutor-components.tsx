@@ -138,6 +138,7 @@ export function UploadCard({
   selectedUploads = [],
   onUploadsChange,
   compact = false,
+  inline = false,
 }: {
   value: PendingUpload | null;
   onChange: (value: PendingUpload | null) => void;
@@ -145,6 +146,7 @@ export function UploadCard({
   selectedUploads?: PendingUpload[];
   onUploadsChange?: (value: PendingUpload[]) => void;
   compact?: boolean;
+  inline?: boolean;
 }) {
   const colors = useColors();
   const [loading, setLoading] = useState(false);
@@ -267,6 +269,33 @@ export function UploadCard({
       else if (accepted[0]) onChange(accepted[0]);
     };
     input.click();
+  }
+  if (inline) {
+    return (
+      <View style={styles.inlineUpload}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Atașează tema"
+          onPress={pickFile}
+          style={({ pressed }) => [styles.inlineAttachButton, { backgroundColor: `${colors.primary}14`, opacity: pressed ? 0.7 : 1 }]}
+        >
+          {loading
+            ? <ActivityIndicator size="small" color={colors.primary} />
+            : <MaterialIcons name="attach-file" size={20} color={colors.primary} />}
+        </Pressable>
+        {Platform.OS !== "web" ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Fotografiază tema"
+            onPress={capturePhoto}
+            style={({ pressed }) => [styles.inlineAttachButton, { backgroundColor: `${colors.primary}14`, opacity: pressed ? 0.7 : 1 }]}
+          >
+            <MaterialIcons name="photo-camera" size={19} color={colors.primary} />
+          </Pressable>
+        ) : null}
+        {error ? <Text style={[styles.inlineUploadError, { color: colors.error }]}>{error}</Text> : null}
+      </View>
+    );
   }
   return (
     <View
@@ -410,6 +439,9 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   uploadCompact: { paddingHorizontal: 7, paddingVertical: 5, gap: 7 },
+  inlineUpload: { flexDirection: "row", alignItems: "center", gap: 3 },
+  inlineAttachButton: { width: 36, height: 36, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+  inlineUploadError: { position: "absolute", bottom: "100%", left: 0, width: 220, fontSize: 10, lineHeight: 14, padding: 6, backgroundColor: "#FFFFFF", borderRadius: 8, elevation: 3 },
   selectedUploads: { flexBasis: "100%", maxHeight: 34 },
   selectedUploadsContent: { gap: 6, alignItems: "center" },
   selectedUpload: { maxWidth: 180, flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 9, paddingHorizontal: 8, paddingVertical: 5 },

@@ -914,19 +914,31 @@ export default function TutorScreen() {
             </Pressable>
           </ScrollView>
         </View>
-        <View style={styles.attachedWrap}>
-          <UploadCard
-            value={null}
-            multiple
-            selectedUploads={uploads}
-            compact
-            onChange={() => undefined}
-            onUploadsChange={async (value) => {
-              setUploads(value);
-              await savePendingUploads(value);
-            }}
-          />
-        </View>
+        {uploads.length ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.attachmentList}
+            contentContainerStyle={styles.attachmentItems}
+          >
+            {uploads.map((file, index) => (
+              <Pressable
+                key={`${file.uri}-${index}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Elimină atașamentul ${file.name}`}
+                onPress={async () => {
+                  const nextUploads = uploads.filter((_, fileIndex) => fileIndex !== index);
+                  setUploads(nextUploads);
+                  await savePendingUploads(nextUploads);
+                }}
+                style={[styles.attachmentChip, { backgroundColor: `${colors.primary}12` }]}
+              >
+                <Text numberOfLines={1} style={[styles.attachmentName, { color: colors.foreground }]}>{file.name}</Text>
+                <MaterialIcons name="close" size={14} color={colors.muted} />
+              </Pressable>
+            ))}
+          </ScrollView>
+        ) : null}
         <Text style={[styles.exampleHint, { color: colors.muted }]}>
           Poți scrie pasul sau atașa exercițiul. De exemplu: „Am ajuns la 2x = 8. E corect dacă împart ambele părți la 2?”
         </Text>
@@ -936,6 +948,17 @@ export default function TutorScreen() {
             { backgroundColor: colors.surface, borderColor: colors.border },
           ]}
         >
+          <UploadCard
+            value={null}
+            multiple
+            selectedUploads={uploads}
+            inline
+            onChange={() => undefined}
+            onUploadsChange={async (value) => {
+              setUploads(value);
+              await savePendingUploads(value);
+            }}
+          />
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Înregistrează o notă vocală"
@@ -1206,7 +1229,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   typingText: { fontSize: 12 },
-  attachedWrap: { marginBottom: 3 },
+  attachmentList: { maxHeight: 34, marginBottom: 5 },
+  attachmentItems: { alignItems: "center", gap: 6 },
+  attachmentChip: { maxWidth: 200, flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 9, paddingHorizontal: 8, paddingVertical: 5 },
+  attachmentName: { flexShrink: 1, fontSize: 10, fontWeight: "700" },
   exampleHint: { fontSize: 10, lineHeight: 14, marginBottom: 4, paddingHorizontal: 2 },
   quickActions: { marginTop: 2, marginBottom: 4 },
   quickActionsContent: { gap: 5, paddingVertical: 1 },
