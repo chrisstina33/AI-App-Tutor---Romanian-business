@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { invokeTutorWithFallback, isImageGenerationRequest, modelFor, parseTutorResponse, tutorChatInputSchema } from "../server/ai";
-import { buildQuickActionQuestion, googleImagesSearchUrl } from "../services/ai-service";
+import { invokeTutorWithFallback, isImageGenerationRequest, modelFor, parseTutorResponse, shouldOmitGeometryDiagram, tutorChatInputSchema } from "../server/ai";
+import { buildQuickActionQuestion, buildTutorPrompt, googleImagesSearchUrl } from "../services/ai-service";
 import { parseAdditionalTopics } from "../services/tutor-onboarding";
 
 afterEach(() => {
@@ -9,6 +9,18 @@ afterEach(() => {
 });
 
 describe("tutor quick actions", () => {
+  it("does not invent geometry points or diagrams for formula questions", () => {
+    expect(shouldOmitGeometryDiagram("Matematică", "Care este formula ariei triunghiului?")).toBe(true);
+    expect(shouldOmitGeometryDiagram("Matematică", "Desenează un triunghi pentru formula ariei.")).toBe(false);
+    expect(shouldOmitGeometryDiagram("Fizică", "Care este formula ariei triunghiului?")).toBe(false);
+    expect(buildTutorPrompt({
+      subject: "Matematică",
+      mode: "concept",
+      question: "Care este formula ariei triunghiului?",
+      history: [],
+    })).toContain("fără să inventezi puncte");
+  });
+
   it("cleans up manually entered curriculum topics", () => {
     expect(parseAdditionalTopics(" Ecuații, Funcții, Ecuații, , Proporții "))
       .toEqual(["Ecuații", "Funcții", "Proporții"]);

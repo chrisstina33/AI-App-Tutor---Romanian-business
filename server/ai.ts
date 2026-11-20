@@ -68,6 +68,16 @@ function normalizeStructuredOutputSchema(schema: unknown): unknown {
   ]));
 }
 
+export function shouldOmitGeometryDiagram(
+  subject: string,
+  question: string,
+): boolean {
+  return subject === "Matematică"
+    && geometryFormulaTerms.test(question)
+    && geometryContextTerms.test(question)
+    && !diagramRequestTerms.test(question);
+}
+
 export const tutorResponseJsonSchema = normalizeStructuredOutputSchema(
   z.toJSONSchema(tutorResponseSchema, { target: "openai" }),
 ) as Record<string, unknown>;
@@ -92,6 +102,8 @@ Folosește categoria schematic numai pentru explicații vizuale non-geometrice (
 În diagramă, include toate câmpurile cerute de schemă. Câmpurile textuale label fără etichetă trebuie să fie șirul gol. În analysis, evaluează exercițiul curent și nu deduce materia doar din selector. Materiile posibile includ Istorie, Geografie și Limba engleză; nivelul olimpiadă se folosește numai când exercițiul indică explicit pregătire pentru olimpiadă. Pentru date insuficiente folosește necunoscut și confidence sub 0.8. Folosește mastery="demonstrated" numai în modul check, după o încercare reală și corectă cu raționament; în celelalte moduri folosește unknown. Nu inventa clasa exactă.`;
 
 const diagramRequestTerms = /deseneaz\w*|desen\w*|schiț\w*|schit\w*|diagram\w*|reprezint\w*|ilustreaz\w*|draw\w*|sketch\w*|illustrat\w*/iu;
+const geometryFormulaTerms = /\b(?:formul\w*|arie\w*|perimetru\w*|volum\w*|apotem\w*|diagonal\w*|raza|raze|diametru\w*|circumferinț\w*|circumferint\w*|lungim\w*)\b/iu;
+const geometryContextTerms = /\b(?:geometr\w*|triunghi\w*|pătrat\w*|patrat\w*|dreptunghi\w*|paralelogram\w*|trapez\w*|cerc\w*|romb\w*|poligon\w*|unghi\w*)\b/iu;
 const imageRequestTerms = /\b(?:genere\w*|cree\w*|realize\w*|desene\w*|ilustre\w*|fă\w*|fa\w*|vreau|aș dori|as dori|poți|poti|ai putea|trimite|arată-mi|arata-mi)\b[\s\S]{0,160}\b(?:imagin\w*|poz\w*|fotograf\w*|ilustra\w*|picture|photo)\b/iu;
 const otherVisualRequestTerms = /schemă|schema|resurs\w* vizual\w*|material\w* didactic\w* complex\w*|plan\w* de lecți\w*|formul\w* structur\w*|structur\w* molecular\w*/iu;
 
@@ -245,7 +257,7 @@ export const assistantRouter = router({
       const result = await invokeLLM({
         model,
         messages: [
-          { role: "system", content: `${systemPrompt}\n\nGenerează diagramă numai dacă întrebarea curentă o cere explicit; în explicația vizuală poate fi utilă doar dacă e exactă, simplă și potrivită clasei. Folosește doar enunțul curent; nu copia diagrame anterioare. Dacă nu poți valida desenul sau nivelul de detaliu îl face confuz, setează diagram=null și explică printr-un singur pas de text. Pentru vectori folosește săgeți orientate și etichete cerute. În fizică, arată numai elementele și sensurile fizice relevante; nu adăuga calcule în desen. Unghi drept numai pentru 90° explicit. Pentru formule moleculare folosește diagrama chemistry; pentru ecuații stoechiometrice folosește reaction și verifică atomii.\n\nClasa declarată: „${input.schoolGrade ?? "Nu o precizez"}”. Nivel de experiență: „${input.learnerLevel ?? "Îmi formez încrederea"}”. Stil preferat: „${input.explanationStyle ?? "Scurt și clar"}”. Dacă elevul a precizat clasa, adaptează notația, vocabularul și complexitatea desenului la ea; nu introduce conținut din clase superioare decât dacă este cerut. Dacă materia aleasă nu corespunde cerinței, identific-o doar când ești sigur; altfel întreabă.` },
+          { role: "system", content: `${systemPrompt}\n\nGenerează diagramă numai dacă întrebarea curentă o cere explicit; în explicația vizuală poate fi utilă doar dacă e exactă, simplă și potrivită clasei. La întrebările despre formule geometrice, nu inventa puncte sau etichete de figură în text și setează diagram=null dacă elevul nu cere explicit desen/diagramă. Folosește doar enunțul curent; nu copia diagrame anterioare. Dacă nu poți valida desenul sau nivelul de detaliu îl face confuz, setează diagram=null și explică printr-un singur pas de text. Pentru vectori folosește săgeți orientate și etichete cerute. În fizică, arată numai elementele și sensurile fizice relevante; nu adăuga calcule în desen. Unghi drept numai pentru 90° explicit. Pentru formule moleculare folosește diagrama chemistry; pentru ecuații stoechiometrice folosește reaction și verifică atomii.\n\nClasa declarată: „${input.schoolGrade ?? "Nu o precizez"}”. Nivel de experiență: „${input.learnerLevel ?? "Îmi formez încrederea"}”. Stil preferat: „${input.explanationStyle ?? "Scurt și clar"}”. Dacă elevul a precizat clasa, adaptează notația, vocabularul și complexitatea desenului la ea; nu introduce conținut din clase superioare decât dacă este cerut. Dacă materia aleasă nu corespunde cerinței, identific-o doar când ești sigur; altfel întreabă.` },
           ...(visualMode ? [{
             role: "system" as const,
             content: "Modul de explicație vizuală este activ. Preferă explicații scurte cu structură vizuală clară; nu genera automat o diagramă. Adaugă cel mult un desen numai dacă cererea îl solicită sau dacă este esențial și îl poți reda exact, corect și potrivit clasei. Dacă există risc de ambiguitate, nu desena și explică un singur pas în text.",
@@ -274,9 +286,11 @@ export const assistantRouter = router({
       const diagramSubject = parsedResponse.analysis.subject === "necunoscut"
         ? input.subject
         : parsedResponse.analysis.subject;
-      const subjectDiagram = diagramForTutorSubject(diagramSubject, parsedResponse.diagram ?? undefined);
+      const subjectDiagram = shouldOmitGeometryDiagram(diagramSubject, input.question)
+        ? undefined
+        : diagramForTutorSubject(diagramSubject, parsedResponse.diagram ?? undefined);
       if (parsedResponse.diagram && !subjectDiagram) {
-        console.warn("[Tutor] Mathematical geometry figure omitted for a science response");
+        console.warn("[Tutor] Unrequested diagram omitted for a formula question or science response");
       }
       if (!parsedResponse.text.trim() && !parsedResponse.diagram) {
         throw new Error("Ghidul nu a returnat un răspuns.");
