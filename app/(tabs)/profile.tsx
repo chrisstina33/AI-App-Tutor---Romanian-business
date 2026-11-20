@@ -1,6 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -71,14 +71,6 @@ export default function ProfileScreen() {
   });
   const checkoutMutation = trpc.billing.createCheckout.useMutation();
   const portalMutation = trpc.billing.createPortal.useMutation();
-  useEffect(() => {
-    if (routeParams.billing === "success") {
-      setBillingNotice("Plata a fost procesată de Stripe. Reîmprospătez starea abonamentului.");
-      void billingStatus.refetch();
-    } else if (routeParams.billing === "cancel") {
-      setBillingNotice("Plata a fost anulată; nu s-a activat un abonament.");
-    }
-  }, [routeParams.billing, billingStatus.refetch]);
   function showAccountNotice(message: string, isError = false) {
     setAccountNotice(message);
     setAccountNoticeIsError(isError);
@@ -569,7 +561,15 @@ export default function ProfileScreen() {
               Starea abonamentului nu a putut fi verificată. Verifică API-ul, baza de date și încearcă din nou.
             </Text>
           ) : null}
-          {billingNotice ? (
+          {routeParams.billing === "success" ? (
+            <Text accessibilityRole="alert" style={[styles.premiumDetailText, { color: colors.success }]}>
+              Plata a fost procesată de Stripe. Starea abonamentului se actualizează automat.
+            </Text>
+          ) : routeParams.billing === "cancel" ? (
+            <Text accessibilityRole="alert" style={[styles.premiumDetailText, { color: colors.muted }]}>
+              Plata a fost anulată; nu s-a activat un abonament.
+            </Text>
+          ) : billingNotice ? (
             <Text accessibilityRole="alert" style={[styles.premiumDetailText, { color: billingNotice.includes("anulată") ? colors.muted : billingNotice.includes("nu") || billingNotice.includes("configurat") ? colors.error : colors.success }]}>
               {billingNotice}
             </Text>

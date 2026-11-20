@@ -475,8 +475,8 @@ export function TutorOnboarding({
               onPress={() => {
                 if (quizFinished) {
                   finishSetup();
-                } else if (step === 3) {
-                  setStep(4);
+                } else if (step === 4) {
+                  submitAnswer();
                 } else {
                   setStep((current) => current + 1);
                 }

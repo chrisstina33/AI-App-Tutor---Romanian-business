@@ -6,7 +6,7 @@ import {
   useAudioRecorderState,
 } from "expo-audio";
 import * as FileSystem from "expo-file-system/legacy";
-import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -186,30 +186,18 @@ export default function TutorScreen() {
         });
       } else if (activeChat) {
         setSubject(activeChat.subject);
+      } else {
+        setSubject(defaultSubject);
       }
       setMessagesLoaded(true);
     })();
     return () => {
       active = false;
     };
-  }, [params.lessonId]);
-  useEffect(() => {
-    if (params.setup === "1") setShowTutorSetup(true);
-  }, [params.setup]);
-  useEffect(() => {
-    if (learnerLoading || params.lessonId || params.subject) return;
-    const preferred = SUBJECTS.find(
-      (item) => item.label === learnerState.preferences.diagnosticSubject,
-    ) ?? SUBJECTS.find(
-      (item) => item.id === learnerState.preferences.preferredSubjects[0],
-    );
-    if (preferred) setSubject(preferred.label);
   }, [
-    learnerLoading,
     learnerState.preferences.diagnosticSubject,
     learnerState.preferences.preferredSubjects,
     params.lessonId,
-    params.subject,
   ]);
   useEffect(() => {
     const controller = new AbortController();
@@ -239,7 +227,6 @@ export default function TutorScreen() {
     const title = chatTitle === "Chat nou" && firstQuestion
       ? firstQuestion.slice(0, 200)
       : chatTitle;
-    if (title !== chatTitle) setChatTitle(title);
     void saveTutorChat({
       id: sessionId,
       title,
@@ -1068,7 +1055,7 @@ export default function TutorScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
-      {showTutorSetup || (!learnerLoading && !learnerState.preferences.tutorSetupComplete) ? (
+      {showTutorSetup || params.setup === "1" || (!learnerLoading && !learnerState.preferences.tutorSetupComplete) ? (
         <TutorOnboarding
           canDismiss={learnerState.preferences.tutorSetupComplete}
           subject={subject}
@@ -1085,7 +1072,10 @@ export default function TutorScreen() {
               ? learnerState.preferences.studiedTopics
               : []
           }
-          onClose={() => setShowTutorSetup(false)}
+          onClose={() => {
+            setShowTutorSetup(false);
+            router.setParams({ setup: undefined });
+          }}
           onComplete={(setup) => {
             setSubject(setup.subject);
             updatePreferences({
@@ -1102,6 +1092,7 @@ export default function TutorScreen() {
               tutorSetupComplete: true,
             });
             setShowTutorSetup(false);
+            router.setParams({ setup: undefined });
             setNotice("Nivelul și temele studiate au fost salvate. Explicațiile vor porni de aici.");
           }}
         />

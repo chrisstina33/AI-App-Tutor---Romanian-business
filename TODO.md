@@ -52,7 +52,7 @@
 - [x] Interfața mobilă și companionul HTML/CSS/JavaScript folosesc limba română, elimină saluturile cu nume fictive și nu folosesc emoji-uri în copy.
 - [x] Tutorul lucrează cu un singur pas și o singură întrebare pe mesaj, afișează răspunsul progresiv și ține răspunsul complet în spatele unei cereri explicite.
 - [x] Tutorul folosește formule LaTeX în răspunsurile demonstrative și explică faptul că răspunsul complet nu apare automat.
-- [x] Model routing-ul este server-side: `gpt-5-mini` pentru rutină, `gpt-5` pentru răspunsuri extinse și `gpt-5.5` pentru probleme premium lungi; `gpt-5-pro` rămâne neactiv deoarece nu apare în catalogul live verificat.
+- [x] Model routing-ul este server-side: `gpt-5-mini` pentru rutină, `gpt-5` pentru răspunsuri extinse și `gpt-5.5` pentru probleme premium lungi.
 - [x] Utilizatorul poate genera PDF pentru conversația tutorului și recapitularea săptămânală, cu formule LaTeX păstrate ca text de lucru.
 - [x] Profilul include rol elev/părinte, nivel, stil de explicație, preferințe de materii, temă, avatar editabil cu disclosure și stocare locală declarată.
 - [ ] Uploadul de imagine/PDF trebuie conectat la stocare și analiză multimodală reală înainte ca aplicația să pretindă că a scanat conținutul.

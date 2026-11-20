@@ -35,7 +35,7 @@ Proiectul este un prototip MVP coerent, cu o direcție vizuală și pedagogică 
 | Autentificare | Loginul este dezactivat; preferințele și progresul rămân pe dispozitiv. | Nu există conturi sau sincronizare între dispozitive. Pentru login va trebui ales și integrat separat un furnizor de autentificare. |
 | Web companion | Copia HTML are tutorial, temă, quiz și formulare. | Autentificarea este demo local; formularul de contact doar confirmă pregătirea mesajului; quiz-ul este foarte mic, iar tutorul web este determinist și demonstrativ. Nu este echivalent funcțional cu aplicația Expo. |
 | Progres | Sunt afișate carduri, lecții și recapitulare. | O parte din date sunt statice/demonstrative; trebuie etichetate și alimentate din activitatea elevului înainte să fie prezentate ca progres real. |
-| Cost AI | Există un calculator orientativ. | Calculatorul folosește prețuri capturate la 9 octombrie 2026 și include `gpt-5-pro`, în timp ce README-ul spune că routerul folosește `gpt-5.5` și că `gpt-5-pro` nu este disponibil. Costul per elev trebuie recalculat cu modelul, utilizarea și tarifele reale înainte să fixați prețul abonamentului. |
+| Cost AI | Există un calculator orientativ. | Calculatorul folosește prețuri capturate la 9 octombrie 2026, care nu corespund rutei AI curente. Costul per elev trebuie recalculat cu modelul, utilizarea și tarifele reale înainte să fixați prețul abonamentului. |
 
 ## Modificări făcute în această rundă
 
