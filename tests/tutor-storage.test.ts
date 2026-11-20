@@ -59,6 +59,22 @@ describe("on-device tutor lesson storage", () => {
     expect(await loadSavedTutorLessons()).toEqual([lesson]);
   });
 
+  it("uses the generated conversation title for the saved lesson", async () => {
+    const messages: TutorMessage[] = [
+      { id: "question-1", role: "user", text: "Ce este o fracție?", createdAt: 1 },
+      { id: "answer-1", role: "assistant", text: "O parte dintr-un întreg.", title: "Înțelegerea fracțiilor", createdAt: 2 },
+    ];
+
+    const lesson = await saveTutorLesson(
+      "session-1",
+      "Matematică",
+      messages,
+      messages[1].title,
+    );
+
+    expect(lesson.title).toBe("Înțelegerea fracțiilor");
+  });
+
   it("updates an existing lesson for the same chat session", async () => {
     const original: TutorMessage[] = [
       { id: "question-1", role: "user", text: "Ecuația 2x = 8", createdAt: 1 },

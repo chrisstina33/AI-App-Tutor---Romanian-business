@@ -123,6 +123,7 @@ describe("tutor chat input", () => {
 
   it("accepts computer science as a tutor analysis subject", () => {
     const response = parseTutorResponse(JSON.stringify({
+      title: "Pașii algoritmului",
       text: "Un algoritm descrie pașii pentru rezolvarea unei probleme.",
       analysis: { subject: "Informatică", schoolLevel: "liceu", difficulty: "ușor", confidence: 0.95, mastery: "unknown" },
       diagram: null,
@@ -135,6 +136,7 @@ describe("tutor chat input", () => {
   it("recognizes the added geography and English subjects", () => {
     for (const subject of ["Geografie", "Limba engleză"] as const) {
       const response = parseTutorResponse(JSON.stringify({
+        title: `Exercițiu de ${subject}`,
         text: "Să rezolvăm cerința pas cu pas.",
         analysis: { subject, schoolLevel: "liceu", difficulty: "ușor", confidence: 0.9, mastery: "unknown" },
         diagram: null,
@@ -146,6 +148,7 @@ describe("tutor chat input", () => {
 
   it("accepts history and olympiad-level tutor analysis while retaining unknown fallbacks", () => {
     const response = parseTutorResponse(JSON.stringify({
+      title: "Analiza sursei istorice",
       text: "Să identificăm mai întâi sursa istorică.",
       analysis: { subject: "Istorie", schoolLevel: "olimpiada", difficulty: "mediu", confidence: 0.95, mastery: "unknown" },
       diagram: null,
@@ -154,6 +157,7 @@ describe("tutor chat input", () => {
 
     expect(response.analysis).toMatchObject({ subject: "Istorie", schoolLevel: "olimpiada" });
     expect(() => parseTutorResponse(JSON.stringify({
+      title: "Contextul necesar",
       text: "Am nevoie de mai mult context.",
       analysis: { subject: "necunoscut", schoolLevel: "necunoscut", difficulty: "necunoscut", confidence: 0.2, mastery: "unknown" },
       diagram: null,

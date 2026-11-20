@@ -68,6 +68,7 @@ export type InvokeParams = {
   reasoning?: Record<string, unknown>;
   maxCompletionTokens?: number;
   max_completion_tokens?: number;
+  maxRetries?: number;
 };
 
 export type ToolCall = {
@@ -296,14 +297,18 @@ const computeBackoffDelay = (attempt: number, retryAfterMs?: number): number => 
 
 // Retry only transient HTTP failures and network errors; other 4xx responses are
 // deterministic request errors and should be returned immediately.
-const fetchWithBackoff = async (url: string, init: FetchInit): Promise<Response> => {
+const fetchWithBackoff = async (
+  url: string,
+  init: FetchInit,
+  maxRetries = RETRY_MAX_RETRIES,
+): Promise<Response> => {
   let lastError: unknown;
 
-  for (let attempt = 0; attempt <= RETRY_MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const response = await fetch(url, init);
       const retryableStatus = response.status === 408 || response.status === 429 || response.status >= 500;
-      if (response.ok || !retryableStatus || attempt === RETRY_MAX_RETRIES) {
+      if (response.ok || !retryableStatus || attempt === maxRetries) {
         return response;
       }
 
@@ -317,7 +322,7 @@ const fetchWithBackoff = async (url: string, init: FetchInit): Promise<Response>
       await sleep(computeBackoffDelay(attempt, retryAfterMs));
     } catch (error) {
       lastError = error;
-      if (attempt === RETRY_MAX_RETRIES) throw error;
+      if (attempt === maxRetries) throw error;
       console.warn("LLM request retry scheduled after network failure");
       await sleep(computeBackoffDelay(attempt));
     }
@@ -345,6 +350,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     max_tokens,
     maxCompletionTokens,
     max_completion_tokens,
+    maxRetries,
   } = params;
   const apiConfig = resolveApiConfig(model);
 
@@ -405,7 +411,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
         ...(apiConfig.provider === "openrouter" ? { "X-Title": "Elunariq Learning Assistant" } : {}),
       },
       body: JSON.stringify(payload),
-    });
+    }, maxRetries);
   } catch (error) {
     console.error("[LLM] Provider network request failed", {
       model: model ?? "default",

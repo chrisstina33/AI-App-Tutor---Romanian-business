@@ -4,6 +4,7 @@ import { invokeLLM, type Message, type MessageContent } from "./_core/llm";
 import { generateImage } from "./_core/imageGeneration";
 import { transcribeAudioBase64 } from "./_core/voiceTranscription";
 import { publicProcedure, router } from "./_core/trpc";
+import { normalizeTutorResponseText, normalizeTutorTitle } from "../shared/tutor-text";
 
 const tutorModes = ["guided", "hint", "concept", "example", "check", "practice", "summary", "direct"] as const;
 const tutorAnalysisSchema = z.object({
@@ -14,6 +15,7 @@ const tutorAnalysisSchema = z.object({
   mastery: z.enum(["demonstrated", "not_yet", "unknown"]),
 }).strict();
 const tutorResponseSchema = z.object({
+  title: z.string().trim().min(3).max(80),
   text: z.string().max(8000),
   analysis: tutorAnalysisSchema,
   diagram: tutorDiagramSchema.nullable(),
@@ -78,6 +80,8 @@ Respectă metoda cerută explicit de elev (de exemplu, inducție matematică, bi
 Pentru formule, folosește EXCLUSIV delimitatorii $ ... $ pentru matematică inline și $$ ... $$ pentru blocuri. Folosește sintaxă LaTeX validă cu backslash, de exemplu \\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}, \\sum_{k=0}^{n} și \\binom{n}{k}. Nu folosi niciodată paranteze drepte [ ] izolate pe rânduri noi și nu lăsa linii goale excesive în formule. La chimie, explică formulele și simbolurile, arată metoda de echilibrare pas cu pas când se cere și verifică numărul atomilor; nu sări direct la rezultat. Dacă informația lipsește, cere detaliul necesar în loc să inventezi un exemplu. Nu folosi emoji și nu pretinde că ai analizat fișiere fără conținut procesat.
 
 Returnează numai obiectul JSON cerut de schema structurată. Completează răspunsul pedagogic în text, analiza materiei în analysis, diagrama interpretată în diagram (sau null dacă nu este utilă ori nu poate fi dedusă cu încredere) și imagePrompt (sau null când elevul nu a cerut explicit o imagine ilustrativă). Pentru o cerere explicită de imagine, oferă în imagePrompt o descriere concretă, educațională, potrivită nivelului și materiei; nu include text sau etichete în imagine decât dacă sunt esențiale. Pentru structuri chimice, reacții și desene geometrice exacte, folosește diagrama validată, nu înlocui informația exactă cu o imagine ilustrativă. Nu produce SVG, HTML, coordonate de desen pentru geometrie sau atomi de decor.
+
+Completează și câmpul title cu un titlu scurt, descriptiv, în română, de 3–6 cuvinte, bazat pe materia și problema elevului. Titlul trebuie să fie text simplu, fără formule, semne %, $, hashtaguri sau ghilimele. În textul răspunsului, nu emite caractere % sau $ izolate; scrie procentele lipite de număr (de exemplu 25%) și folosește delimitatori LaTeX doar pentru formule complete.
 
 Pentru categoria geometry, identifică figura, punctele/etichetele, segmentele, unghiurile, relațiile de paralelism/perpendicularitate/egalitate și cercurile cerute. Desenul trebuie să conțină numai figura și informațiile geometrice relevante pentru a o reprezenta; nu include calcule, formule de rezolvare, răspunsuri sau detalii fără legătură cu desenul. În câmpul constraints păstrează doar datele geometrice explicite din enunț care nu sunt deja reprezentate de etichete sau marcaje; pentru o figură cerută fără date suplimentare, lasă lista goală. Codifică lungimile și unghiurile cunoscute în etichetele elementelor relevante. Referințele trebuie să indice numai ID-uri declarate. Pentru paralelogram folosește figura parallelogram, exact patru puncte în ordinea conturului și cele patru laturi, fără diagonale dacă nu sunt cerute. Pentru triunghi, pătrat și dreptunghi folosește punctele și laturile în ordinea ciclului conturului. Alege intersecting_lines când sunt două drepte care se intersectează. Marchează un unghi ca drept numai când enunțul spune explicit că măsoară 90° ori că este perpendicular; nu deduce egalități sau perpendicularități doar din tipul figurii. Setează schematic=true când măsurile ori unghiurile exacte lipsesc; nu inventa valori și nu pretinde că desenul este la scară. Fă unghiul de la C explicit prin vertex, ray1 și ray2.
 
@@ -169,23 +173,22 @@ export function parseTutorResponse(rawText: string) {
     console.error("[Tutor] Provider response failed schema validation", parsed.error.issues.map(({ path, code }) => ({ path, code })));
     throw new Error("Ghidul AI a returnat un răspuns incomplet. Încearcă din nou.");
   }
-  if (parsed.data.diagram) {
-    const diagramError = validateTutorDiagram(parsed.data.diagram);
+  let diagram = parsed.data.diagram;
+  if (diagram) {
+    const diagramError = validateTutorDiagram(diagram);
     if (diagramError) {
       console.warn("[Tutor] Invalid diagram structure omitted", diagramError);
-      return { ...parsed.data, diagram: null };
-    }
-    if (
-      parsed.data.diagram.category === "geometry"
-      || parsed.data.diagram.category === "chemistry"
-    ) {
-      return {
-        ...parsed.data,
-        diagram: { ...parsed.data.diagram, schematic: true },
-      };
+      diagram = null;
+    } else if (diagram.category === "geometry" || diagram.category === "chemistry") {
+      diagram = { ...diagram, schematic: true };
     }
   }
-  return parsed.data;
+  return {
+    ...parsed.data,
+    diagram,
+    title: normalizeTutorTitle(parsed.data.title),
+    text: normalizeTutorResponseText(parsed.data.text),
+  };
 }
 
 export function diagramForTutorSubject(
@@ -264,6 +267,7 @@ export const assistantRouter = router({
         },
         maxCompletionTokens: model === "gpt-5.5" ? 3000 : model === "gpt-5" ? 2200 : 1500,
         reasoning: model === "gpt-5-mini" ? { effort: "low" } : { effort: model === "gpt-5.5" ? "high" : "medium" },
+        maxRetries: 0,
       });
       const rawText = contentToText(result.choices?.[0]?.message?.content);
       const parsedResponse = parseTutorResponse(rawText);
@@ -296,6 +300,7 @@ export const assistantRouter = router({
     }
     return {
       provider: "live" as const,
+      title: tutorResponse.title,
       text: tutorResponse.text,
       model: modelResult.model,
       tier: modelResult.tier,

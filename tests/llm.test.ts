@@ -89,4 +89,23 @@ describe("OpenRouter tutor provider", () => {
     })).rejects.toThrow("Unsupported schema keyword oneOf.");
     expect(fetchMock).toHaveBeenCalledOnce();
   });
+
+  it("does not back off and retry tutor requests when retries are disabled", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "openrouter-test-key");
+    vi.stubEnv("OPENROUTER_API_KEY_GPT5_MINI", "");
+    const fetchMock = vi.fn(async () => new Response(
+      JSON.stringify({ error: { code: "temporarily_unavailable", message: "Try again later." } }),
+      { status: 503, headers: { "content-type": "application/json" } },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { invokeLLM } = await import("../server/_core/llm");
+
+    await expect(invokeLLM({
+      model: "gpt-5-mini",
+      messages: [{ role: "user", content: "Explică o fracție." }],
+      maxRetries: 0,
+    })).rejects.toThrow("status 503");
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
 });

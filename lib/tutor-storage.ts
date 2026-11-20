@@ -13,6 +13,7 @@ const tutorMessageSchema = z.object({
   text: z.string().max(8000),
   mode: z.enum(["guided", "hint", "concept", "example", "check", "practice", "summary", "direct"]).optional(),
   createdAt: z.number(),
+  title: z.string().max(64).optional(),
   provider: z.literal("live").optional(),
   model: z.string().optional(),
   diagram: tutorDiagramSchema.optional(),
@@ -192,6 +193,7 @@ export async function saveTutorLesson(
   sessionId: string,
   subject: string,
   messages: TutorMessage[],
+  title?: string,
 ): Promise<SavedTutorLesson> {
   const lessonMessages = messages.filter(
     (message) => message.id !== "welcome" && message.text.trim(),
@@ -203,7 +205,7 @@ export async function saveTutorLesson(
   const lesson = savedTutorLessonSchema.parse({
     id: sessionId,
     sessionId,
-    title: (firstQuestion ?? subject).slice(0, 200),
+    title: (title?.trim() || firstQuestion || subject).slice(0, 200),
     subject,
     savedAt: new Date().toISOString(),
     messages: lessonMessages.slice(-100),

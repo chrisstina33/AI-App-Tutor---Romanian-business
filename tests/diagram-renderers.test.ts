@@ -382,6 +382,7 @@ describe("structured tutor responses", () => {
   it("omits a chemically invalid diagram but keeps the tutoring answer", () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const response = parseTutorResponse(JSON.stringify({
+      title: "Legăturile atomului de carbon",
       text: "Verifică numărul legăturilor carbonului.",
       analysis: { subject: "Chimie", schoolLevel: "liceu", difficulty: "mediu", confidence: 0.9, mastery: "unknown" },
       imagePrompt: null,

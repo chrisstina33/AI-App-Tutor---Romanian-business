@@ -68,6 +68,7 @@ import { getApiBaseUrl } from "@/constants/api";
 import { trpc } from "@/lib/trpc";
 import { diagramSvg } from "@/lib/diagrams";
 import type { TutorDiagram } from "@/shared/tutor-diagram";
+import { normalizeTutorResponseText } from "@/shared/tutor-text";
 
 const INITIAL_MESSAGE: TutorMessage = {
   id: "welcome",
@@ -223,13 +224,9 @@ export default function TutorScreen() {
   useEffect(() => {
     if (!messagesLoaded) return;
     void saveTutorMessages(messages);
-    const firstQuestion = messages.find((message) => message.role === "user")?.text;
-    const title = chatTitle === "Chat nou" && firstQuestion
-      ? firstQuestion.slice(0, 200)
-      : chatTitle;
     void saveTutorChat({
       id: sessionId,
-      title,
+      title: chatTitle,
       subject,
       updatedAt: new Date().toISOString(),
       messages,
@@ -245,6 +242,7 @@ export default function TutorScreen() {
 
   async function addReply(
     reply: {
+      title: string;
       text: string;
       provider: "live";
       model?: string;
@@ -259,6 +257,7 @@ export default function TutorScreen() {
     const next: TutorMessage = {
       id,
       role: "assistant",
+      title: reply.title,
       mode: requestedMode,
       provider: reply.provider,
       model: reply.model,
@@ -340,13 +339,18 @@ export default function TutorScreen() {
         createdAt: currentTimestamp(),
       };
       const assistantMessage = await addReply(live, requestedMode);
+      const alreadyTitled = messages.some(
+        (message) => message.role === "assistant" && message.title,
+      );
+      const lessonTitle = alreadyTitled ? chatTitle : live.title;
+      if (!alreadyTitled) setChatTitle(live.title);
       if (lessonSaved) {
         try {
           await saveTutorLesson(sessionId, effectiveSubject, [
             ...messages,
             userMessage,
             assistantMessage,
-          ]);
+          ], lessonTitle);
         } catch (error) {
           console.error(
             "[Tutor] Saved lesson update failed",
@@ -477,7 +481,12 @@ export default function TutorScreen() {
     if (savingLesson) return;
     setSavingLesson(true);
     try {
-      const lesson = await saveTutorLesson(sessionId, subject, messages);
+      const lesson = await saveTutorLesson(
+        sessionId,
+        subject,
+        messages,
+        chatTitle === "Chat nou" ? undefined : chatTitle,
+      );
       setLessonSaved(true);
       setNotice(`Lecția „${lesson.title}” a fost salvată pe acest dispozitiv. Apare în Panou și Progres.`);
     } catch (error) {
@@ -600,75 +609,54 @@ export default function TutorScreen() {
         setNotice("Trimite mai întâi o întrebare pentru a crea fișa de recapitulare.");
         return;
       }
-      const studyGuide = await assistantMutation.mutateAsync({
-        subject: pdfSubject,
-        mode: "summary",
-        question: "Creează o fișă de recapitulare clară, utilă pentru învățare și aliniată programei școlare din România. Sintetizează noțiunile importante discutate, explică termenii necesari, include formulele și pașii de rezolvare relevanți și încheie cu trei întrebări scurte de verificare. Nu reda conversația și nu inventa noțiuni care nu au fost discutate sau nu sunt necesare.",
-        learnerLevel: learnerState.preferences?.level,
-        schoolGrade: learnerState.preferences?.schoolGrade,
-        explanationStyle: learnerState.preferences?.explanationStyle,
-        studiedTopics: learnerState.preferences?.studiedTopicsSubject === pdfSubject
-          ? learnerState.preferences.studiedTopics
-          : [],
-        diagnosticScore: learnerState.preferences?.diagnosticSubject === pdfSubject
-          ? learnerState.preferences.diagnosticScore
-          : undefined,
-        visualMode: agent === "Explicație vizuală" || learnerState.preferences?.explanationStyle === "Detaliat și vizual",
-        messages: lessonMessages.slice(-10).map((message) => ({
-          role: message.role,
-          text: message.text.slice(0, message.role === "user" ? 4000 : 8000),
-        })),
-      });
+      const transcriptText = lessonMessages
+        .slice(-40)
+        .map((message) =>
+          `${message.role === "user" ? "Elev" : "Elunariq"}: ${normalizeTutorResponseText(message.text)}`,
+        )
+        .join("\n\n");
       const formulas =
-        studyGuide.text.match(/\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\]|\$\$[\s\S]+?\$\$|\$[^$\n]+?\$/g) ?? [];
-      await generateLearningPdf(`Fișă de recapitulare · ${pdfSubject}`, [
-        { heading: "Materia", body: pdfSubject },
-        {
-          heading: "Sinteză pentru recapitulare",
-          body: studyGuide.text,
-        },
-        {
-          heading: "Formule importante",
-          body: formulas.length
-            ? formulas.join("\n\n")
-            : "În această sesiune nu a fost folosită o formulă.",
-        },
-        ...exportMessages.filter((message) => message.role === "assistant" && message.diagram).slice(-3).map((message) => ({
-          heading: message.diagram!.caption,
-          body: message.diagram!.category === "schematic"
-            ? message.diagram!.steps.map((step) => `${step.calculation}\n${step.meaning}`).join("\n\n")
-            : message.diagram!.category === "reaction"
-              ? `Reactanți: ${message.diagram!.reactants.map((item) => `${item.coefficient > 1 ? `${item.coefficient} ` : ""}${item.formula}${item.state ? ` (${item.state})` : ""}`).join(" + ")}\nProduși: ${message.diagram!.products.map((item) => `${item.coefficient > 1 ? `${item.coefficient} ` : ""}${item.formula}${item.state ? ` (${item.state})` : ""}`).join(" + ")}${message.diagram!.conditions ? `\nCondiții: ${message.diagram!.conditions}` : ""}`
-            : [
-                message.diagram!.schematic ? "Reprezentare schematică, nu este la scară." : "Structură și relații interpretate din enunț.",
-                ...message.diagram!.constraints,
-              ].join("\n\n"),
-          diagramSvg: diagramSvg(message.diagram!),
-        })),
-        ...exportMessages.filter((message) => message.role === "assistant" && message.imageUrl).slice(-1).map((message) => ({
-          heading: "Imagine educațională",
-          body: "Imagine generată pentru tema discutată.",
-          imageUrl: /^https?:\/\//i.test(message.imageUrl!)
-            ? message.imageUrl!
-            : `${getApiBaseUrl()}${message.imageUrl!}`,
-        })),
-        ...(studyGuide.diagram ? [{
-          heading: studyGuide.diagram.caption,
-          body: studyGuide.diagram.category === "schematic"
-            ? studyGuide.diagram.steps.map((step) => `${step.calculation}\n${step.meaning}`).join("\n\n")
-            : studyGuide.diagram.category === "reaction"
-              ? `Reactanți: ${studyGuide.diagram.reactants.map((item) => `${item.coefficient > 1 ? `${item.coefficient} ` : ""}${item.formula}${item.state ? ` (${item.state})` : ""}`).join(" + ")}\nProduși: ${studyGuide.diagram.products.map((item) => `${item.coefficient > 1 ? `${item.coefficient} ` : ""}${item.formula}${item.state ? ` (${item.state})` : ""}`).join(" + ")}${studyGuide.diagram.conditions ? `\nCondiții: ${studyGuide.diagram.conditions}` : ""}`
-              : [
-                  studyGuide.diagram.schematic ? "Reprezentare schematică, nu este la scară." : "Structură și relații interpretate din enunț.",
-                  ...studyGuide.diagram.constraints,
-                ].join("\n\n"),
-          diagramSvg: diagramSvg(studyGuide.diagram),
-        }] : []),
-        {
-          heading: "Următorul pas",
-          body: "Răspunde la întrebările de verificare din sinteză, apoi încearcă un exercițiu fără să privești fișa.",
-        },
-      ], printWindow ?? undefined);
+        transcriptText.match(/\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\]|\$\$[\s\S]+?\$\$|\$[^$\n]+?\$/g) ?? [];
+      await generateLearningPdf(
+        `${chatTitle === "Chat nou" ? `Lecție de ${pdfSubject}` : chatTitle} · Elunariq`,
+        [
+          { heading: "Materia", body: pdfSubject },
+          {
+            heading: "Conversație",
+            body: transcriptText,
+          },
+          {
+            heading: "Formule importante",
+            body: formulas.length
+              ? formulas.join("\n\n")
+              : "În această sesiune nu a fost folosită o formulă.",
+          },
+          ...exportMessages.filter((message) => message.role === "assistant" && message.diagram).slice(-3).map((message) => ({
+            heading: message.diagram!.caption,
+            body: message.diagram!.category === "schematic"
+              ? message.diagram!.steps.map((step) => `${step.calculation}\n${step.meaning}`).join("\n\n")
+              : message.diagram!.category === "reaction"
+                ? `Reactanți: ${message.diagram!.reactants.map((item) => `${item.coefficient > 1 ? `${item.coefficient} ` : ""}${item.formula}${item.state ? ` (${item.state})` : ""}`).join(" + ")}\nProduși: ${message.diagram!.products.map((item) => `${item.coefficient > 1 ? `${item.coefficient} ` : ""}${item.formula}${item.state ? ` (${item.state})` : ""}`).join(" + ")}${message.diagram!.conditions ? `\nCondiții: ${message.diagram!.conditions}` : ""}`
+                : [
+                    message.diagram!.schematic ? "Reprezentare schematică, nu este la scară." : "Structură și relații interpretate din enunț.",
+                    ...message.diagram!.constraints,
+                  ].join("\n\n"),
+            diagramSvg: diagramSvg(message.diagram!),
+          })),
+          ...exportMessages.filter((message) => message.role === "assistant" && message.imageUrl).slice(-1).map((message) => ({
+            heading: "Imagine educațională",
+            body: "Imagine generată pentru tema discutată.",
+            imageUrl: /^https?:\/\//i.test(message.imageUrl!)
+              ? message.imageUrl!
+              : `${getApiBaseUrl()}${message.imageUrl!}`,
+          })),
+          {
+            heading: "Următorul pas",
+            body: "Reia explicațiile și încearcă să rezolvi un exercițiu asemănător fără ajutor.",
+          },
+        ],
+        printWindow ?? undefined,
+      );
       setNotice(Platform.OS === "web" ? "Alege «Salvează ca PDF» în dialogul de tipărire." : ro.pdfReady);
     } catch (error) {
       printWindow?.close();

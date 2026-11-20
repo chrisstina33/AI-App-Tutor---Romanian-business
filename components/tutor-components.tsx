@@ -22,6 +22,7 @@ import {
 import type { TutorMessage } from "@/services/ai-service";
 import { LearningDiagram } from "@/components/learning-diagram";
 import { getApiBaseUrl } from "@/constants/api";
+import { normalizeTutorResponseText } from "@/shared/tutor-text";
 
 const ALLOWED_MIME_TYPES = [
   "application/pdf",
@@ -34,6 +35,9 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
 export function TutorMessageCard({ message }: { message: TutorMessage }) {
   const colors = useColors();
   const assistant = message.role === "assistant";
+  const displayText = assistant
+    ? normalizeTutorResponseText(message.text)
+    : message.text;
   return (
     <View style={[styles.messageRow, !assistant && styles.messageRowUser]}>
       {assistant ? (
@@ -74,7 +78,7 @@ export function TutorMessageCard({ message }: { message: TutorMessage }) {
             {message.analysis.mastery === "demonstrated" ? " · înțelegere demonstrată" : ""}
           </Text>
         ) : null}
-        {sanitizeTutorMathText(message.text)
+        {sanitizeTutorMathText(displayText)
           .split("\n")
           .filter((line) => line.trim().length > 0)
           .map((line, index) => {

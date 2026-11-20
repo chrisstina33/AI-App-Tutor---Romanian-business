@@ -55,46 +55,31 @@ export async function generateLearningPdf(
     h1{color:#12152a;border-bottom:3px solid #8a72ff;padding-bottom:12px;font-size:24pt}h2{color:#6d58dc;margin-top:26px;font-size:15pt}
     section{page-break-inside:avoid;margin-bottom:18px}.math-inline,.math-display{color:#4737a1;font-family:Georgia,serif;font-style:italic}
     .math-display{margin:12px 0;text-align:center}.math-source{display:none}.math-fallback{display:inline}.math-display .math-fallback{display:block;font-size:16pt;padding:5px}
-    .math-ready .math-source{display:inline}.math-ready .math-fallback{display:none}.math-ready .math-display .math-source{display:block}
-    .math-ready mjx-container{font-size:112%!important;color:#4737a1}.diagram{max-width:420px;margin:14px auto;page-break-inside:avoid}.diagram svg,.diagram img{width:100%;height:auto}.diagram img{display:block;object-fit:contain}footer{margin-top:34px;color:#707087;font-size:9pt;border-top:1px solid #dedbea;padding-top:10px}
-  </style><script>window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],displayMath:[["\\\\[","\\\\]"]]},options:{enableMenu:false}};</script>
-  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-chtml.js"></script><script>
-    window.addEventListener("load",function(){if(window.MathJax&&window.MathJax.typesetPromise){window.MathJax.typesetPromise().then(function(){document.documentElement.classList.add("math-ready")}).catch(function(){})}});
-  </script></head><body><h1>${escapeHtml(title)}</h1>${body}<footer><p>Creat cu Elunariq · învață prin următorul pas</p></footer></body></html>`;
+    .diagram{max-width:420px;margin:14px auto;page-break-inside:avoid}.diagram svg,.diagram img{width:100%;height:auto}.diagram img{display:block;object-fit:contain}footer{margin-top:34px;color:#707087;font-size:9pt;border-top:1px solid #dedbea;padding-top:10px}
+  </style></head><body><h1>${escapeHtml(title)}</h1>${body}<footer><p>Creat cu Elunariq · învață prin următorul pas</p></footer></body></html>`;
 
   if (Platform.OS === "web") {
     const printWindow = preparedWindow ?? window.open("", "_blank");
     if (!printWindow) throw new Error("Browserul a blocat fereastra pentru PDF. Permite ferestrele pop-up și încearcă din nou.");
 
     await new Promise<void>((resolve, reject) => {
-      let printed = false;
-      let timeout: ReturnType<typeof setTimeout>;
-      const print = () => {
-        if (printed) return;
-        printed = true;
-        clearTimeout(timeout);
-        try {
-          printWindow.focus();
-          printWindow.print();
-          resolve();
-        } catch (error) {
-          reject(error);
-        }
-      };
-      timeout = setTimeout(print, 2500);
-      printWindow.addEventListener("load", () => {
-        const mathJaxWindow = printWindow as Window & {
-          MathJax?: { typesetPromise?: () => Promise<void> };
-        };
-        void mathJaxWindow.MathJax?.typesetPromise?.()
-          .catch(() => undefined)
-          .finally(() => setTimeout(print, 100));
-        if (!mathJaxWindow.MathJax?.typesetPromise) setTimeout(print, 100);
-      }, { once: true });
-      printWindow.addEventListener("afterprint", () => printWindow.close(), { once: true });
-      printWindow.document.open();
-      printWindow.document.write(html);
-      printWindow.document.close();
+      try {
+        printWindow.addEventListener("afterprint", () => printWindow.close(), { once: true });
+        printWindow.document.open();
+        printWindow.document.write(html);
+        printWindow.document.close();
+        setTimeout(() => {
+          try {
+            printWindow.focus();
+            printWindow.print();
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        }, 100);
+      } catch (error) {
+        reject(error);
+      }
     });
     return true;
   }
