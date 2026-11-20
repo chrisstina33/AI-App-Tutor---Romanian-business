@@ -146,12 +146,25 @@ function scriptCharacters(
 export function formatLatexForDisplay(input: string): string {
   let value = input
     .replace(
-      /\\begin\{(p|b|v)matrix\}([\s\S]*?)\\end\{\1matrix\}/g,
+      /\\begin\{(matrix|pmatrix|bmatrix|Bmatrix|vmatrix|Vmatrix)\}([\s\S]*?)\\end\{\1\}/g,
       (_match, type: string, body: string) => {
-        const [open, close] =
-          type === "p" ? ["[", "]"] : type === "b" ? ["⎡", "⎤"] : ["|", "|"];
-        return `${open}${body.replace(/\s*\\\\\s*/g, "; ").replace(/&/g, " ")}${close}`;
+        const [open, close] = type === "pmatrix"
+          ? ["[", "]"]
+          : type === "bmatrix"
+            ? ["⎡", "⎤"]
+            : type === "Bmatrix"
+              ? ["{", "}"]
+              : type === "vmatrix"
+                ? ["|", "|"]
+                : type === "Vmatrix"
+                  ? ["‖", "‖"]
+                  : ["⎡", "⎤"];
+        return `${open}${body.replace(/\s*\\\\\s*/g, "; ").replace(/&/g, "  ")}${close}`;
       },
+    )
+    .replace(
+      /\\begin\{cases\}([\s\S]*?)\\end\{cases\}/g,
+      (_match, body: string) => body.replace(/\s*\\\\\s*/g, "; ").replace(/&/g, ": "),
     )
     .replace(/\\(?:left|right|displaystyle|textstyle)\b/g, "")
     .replace(/\\(?:,|;|!|quad|qquad)\b/g, " ");

@@ -22,10 +22,12 @@ import {
 type LearnerLevel = Preferences["level"];
 type TutorSetup = {
   subject: string;
+  subjects: string[];
   schoolGrade: SchoolGrade;
   level: LearnerLevel;
   studiedTopics: string[];
   diagnosticScore: number;
+  diagnosticAnswers: boolean[];
 };
 
 const GRADES: SchoolGrade[] = [
@@ -48,6 +50,7 @@ const LEVELS: LearnerLevel[] = [
 export function TutorOnboarding({
   canDismiss,
   subject,
+  prioritySubjects,
   schoolGrade,
   level,
   studiedTopics,
@@ -56,6 +59,7 @@ export function TutorOnboarding({
 }: {
   canDismiss: boolean;
   subject: string;
+  prioritySubjects?: string[];
   schoolGrade: SchoolGrade;
   level: LearnerLevel;
   studiedTopics: string[];
@@ -65,6 +69,9 @@ export function TutorOnboarding({
   const colors = useColors();
   const [step, setStep] = useState(0);
   const [selectedSubject, setSelectedSubject] = useState(subject);
+  const [selectedSubjects, setSelectedSubjects] = useState(
+    prioritySubjects?.length ? prioritySubjects : [subject],
+  );
   const [selectedGrade, setSelectedGrade] = useState(schoolGrade);
   const [selectedLevel, setSelectedLevel] = useState(level);
   const [selectedTopics, setSelectedTopics] = useState<string[]>(studiedTopics);
@@ -82,14 +89,18 @@ export function TutorOnboarding({
     () => getSuggestedTopics(selectedSubject),
     [selectedSubject],
   );
-  const totalSteps = 2 + questions.length;
+  const totalSteps = 4 + questions.length;
   const currentStep = quizFinished
     ? totalSteps
     : step === 0
       ? 1
       : step === 1
         ? 2
-        : 3 + questionIndex;
+        : step === 2
+          ? 3
+          : step === 3
+            ? 4
+            : 5 + questionIndex;
   const correctAnswers =
     answers.filter(Boolean).length +
     (selectedAnswer === questions[questionIndex]?.correctIndex ? 1 : 0);
@@ -136,10 +147,12 @@ export function TutorOnboarding({
     ].slice(0, 30);
     onComplete({
       subject: selectedSubject,
+      subjects: selectedSubjects,
       schoolGrade: selectedGrade,
       level: selectedLevel,
       studiedTopics: topics,
       diagnosticScore: correctAnswers,
+      diagnosticAnswers: answers,
     });
   }
 
@@ -246,8 +259,16 @@ export function TutorOnboarding({
                       />
                     ))}
                   </View>
-                  <Text style={[styles.questionTitle, styles.levelHeading, { color: colors.foreground }]}>
-                    Cum te simți la materia asta?
+                </>
+              ) : null}
+
+              {step === 1 ? (
+                <>
+                  <Text style={[styles.questionTitle, { color: colors.foreground }]}>
+                    Cum te simți când lucrezi la materii?
+                  </Text>
+                  <Text style={[styles.description, { color: colors.muted }]}>
+                    Alegerea ne ajută să calibrăm primul pas; nu este o notă.
                   </Text>
                   <View style={styles.levelList}>
                     {LEVELS.map((learnerLevel, index) => (
@@ -259,57 +280,63 @@ export function TutorOnboarding({
                         style={[
                           styles.levelOption,
                           {
-                            borderColor:
-                              selectedLevel === learnerLevel ? colors.primary : colors.border,
-                            backgroundColor:
-                              selectedLevel === learnerLevel ? `${colors.primary}12` : colors.surface,
+                            borderColor: selectedLevel === learnerLevel ? colors.primary : colors.border,
+                            backgroundColor: selectedLevel === learnerLevel ? `${colors.primary}12` : colors.surface,
                           },
                         ]}
                       >
-                        <Text style={[styles.levelNumber, { color: colors.primary }]}>
-                          0{index + 1}
-                        </Text>
-                        <Text style={[styles.levelText, { color: colors.foreground }]}>
-                          {learnerLevel}
-                        </Text>
-                        {selectedLevel === learnerLevel ? (
-                          <MaterialIcons name="check-circle" size={19} color={colors.primary} />
-                        ) : null}
+                        <Text style={[styles.levelNumber, { color: colors.primary }]}>0{index + 1}</Text>
+                        <Text style={[styles.levelText, { color: colors.foreground }]}>{learnerLevel}</Text>
+                        {selectedLevel === learnerLevel ? <MaterialIcons name="check-circle" size={19} color={colors.primary} /> : null}
                       </Pressable>
                     ))}
                   </View>
                 </>
               ) : null}
 
-              {step === 1 ? (
+              {step === 2 ? (
                 <>
                   <Text style={[styles.questionTitle, { color: colors.foreground }]}>
-                    Ce ați studiat până acum?
+                    La ce materii ai nevoie de ajutor acum?
                   </Text>
                   <Text style={[styles.description, { color: colors.muted }]}>
-                    Alege materia și bifează temele parcurse. Nu vom presupune că știi ce nu ai selectat.
+                    Alege una sau mai multe. Prima materie va primi mini-quizul.
                   </Text>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.subjectList}
-                  >
+                  <View style={styles.topicList}>
                     {SUBJECTS.map((item) => (
                       <ChoiceChip
                         key={item.id}
                         label={item.shortLabel}
-                        selected={selectedSubject === item.label}
+                        selected={selectedSubjects.includes(item.label)}
                         onPress={() => {
-                          setSelectedSubject(item.label);
-                          setSelectedTopics([]);
-                          setAdditionalTopics("");
-                          setQuestionIndex(0);
-                          setSelectedAnswer(null);
-                          setAnswers([]);
+                          const current = selectedSubjects;
+                          if (current.includes(item.label) && current.length === 1) return;
+                          const next = current.includes(item.label)
+                            ? current.filter((value) => value !== item.label)
+                            : [...current, item.label];
+                          setSelectedSubjects(next);
+                          if (!next.includes(selectedSubject)) {
+                            setSelectedSubject(next[0]);
+                            setSelectedTopics([]);
+                            setQuestionIndex(0);
+                            setSelectedAnswer(null);
+                            setAnswers([]);
+                          }
                         }}
                       />
                     ))}
-                  </ScrollView>
+                  </View>
+                </>
+              ) : null}
+
+              {step === 3 ? (
+                <>
+                  <Text style={[styles.questionTitle, { color: colors.foreground }]}>
+                    Ce teme ai studiat la {selectedSubject}?
+                  </Text>
+                  <Text style={[styles.description, { color: colors.muted }]}>
+                    Bifează doar temele parcurse; nu vom presupune că știi ce nu ai selectat.
+                  </Text>
                   <Text style={[styles.fieldLabel, { color: colors.muted }]}>
                     TEME LA {selectedSubject.toLocaleUpperCase("ro-RO")}
                   </Text>
@@ -341,7 +368,7 @@ export function TutorOnboarding({
                 </>
               ) : null}
 
-              {step === 2 && !quizFinished ? (
+              {step === 4 && !quizFinished ? (
                 <>
                   <Text style={[styles.questionTitle, { color: colors.foreground }]}>
                     Mini-quiz · {selectedSubject}
@@ -405,7 +432,7 @@ export function TutorOnboarding({
                 </>
               ) : null}
 
-              {step === 2 && quizFinished ? (
+              {step === 4 && quizFinished ? (
                 <View style={styles.result}>
                   <View style={[styles.resultIcon, { backgroundColor: `${colors.success}18` }]}>
                     <MaterialIcons name="celebration" size={31} color={colors.success} />
@@ -429,12 +456,12 @@ export function TutorOnboarding({
               <Pressable
                 accessibilityRole="button"
                 onPress={() => {
-                  if (step === 2) {
+                  if (step === 4) {
                     if (questionIndex > 0) {
                       setQuestionIndex((current) => current - 1);
                       setAnswers((current) => current.slice(0, -1));
-                    } else setStep(1);
-                  } else setStep(0);
+                    } else setStep(3);
+                  } else setStep((current) => current - 1);
                   setSelectedAnswer(null);
                 }}
                 style={[styles.backButton, { borderColor: colors.border }]}
@@ -444,23 +471,21 @@ export function TutorOnboarding({
             ) : null}
             <Pressable
               accessibilityRole="button"
-              disabled={step === 2 && !quizFinished && selectedAnswer === null}
+              disabled={step === 4 && !quizFinished && selectedAnswer === null}
               onPress={() => {
                 if (quizFinished) {
                   finishSetup();
-                } else if (step === 0) {
-                  setStep(1);
-                } else if (step === 1) {
-                  setStep(2);
+                } else if (step === 3) {
+                  setStep(4);
                 } else {
-                  submitAnswer();
+                  setStep((current) => current + 1);
                 }
               }}
               style={[
                 styles.nextButton,
                 {
                   backgroundColor:
-                    step === 2 && !quizFinished && selectedAnswer === null
+                    step === 4 && !quizFinished && selectedAnswer === null
                       ? colors.border
                       : colors.primary,
                 },
@@ -469,7 +494,7 @@ export function TutorOnboarding({
               <Text style={styles.nextText}>
                 {quizFinished
                   ? "Începem să învățăm"
-                  : step === 2
+                  : step === 4
                     ? questionIndex === questions.length - 1
                       ? "Vezi rezultatul"
                       : "Următoarea întrebare"

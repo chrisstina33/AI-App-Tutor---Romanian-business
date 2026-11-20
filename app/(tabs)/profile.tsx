@@ -1,7 +1,10 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -31,6 +34,7 @@ import { PREMIUM_MONTHLY_PRICE_LABEL } from "@/shared/billing";
 
 export default function ProfileScreen() {
   const colors = useColors();
+  const routeParams = useLocalSearchParams<{ billing?: string }>();
   const { colorScheme, setColorScheme, accent, setAccent } = useThemeContext();
   const { state: learnerState, updatePreferences: saveLearnerPreferences } = useLearnerData();
   const { user, beginSession, endSession } = useAuth();
@@ -48,6 +52,12 @@ export default function ProfileScreen() {
   const [accountNoticeIsError, setAccountNoticeIsError] = useState(false);
   const [avatarNotice, setAvatarNotice] = useState(false);
   const [premiumDetails, setPremiumDetails] = useState(false);
+  const [billingNotice, setBillingNotice] = useState("");
+  const [showPartnership, setShowPartnership] = useState(false);
+  const [schoolName, setSchoolName] = useState("");
+  const [schoolEmail, setSchoolEmail] = useState("");
+  const [schoolNotes, setSchoolNotes] = useState("");
+  const [partnershipNotice, setPartnershipNotice] = useState("");
   const signUpMutation = trpc.auth.signUp.useMutation();
   const signInMutation = trpc.auth.signIn.useMutation();
   const signOutMutation = trpc.auth.signOut.useMutation();
@@ -61,6 +71,14 @@ export default function ProfileScreen() {
   });
   const checkoutMutation = trpc.billing.createCheckout.useMutation();
   const portalMutation = trpc.billing.createPortal.useMutation();
+  useEffect(() => {
+    if (routeParams.billing === "success") {
+      setBillingNotice("Plata a fost procesată de Stripe. Reîmprospătez starea abonamentului.");
+      void billingStatus.refetch();
+    } else if (routeParams.billing === "cancel") {
+      setBillingNotice("Plata a fost anulată; nu s-a activat un abonament.");
+    }
+  }, [routeParams.billing, billingStatus.refetch]);
   function showAccountNotice(message: string, isError = false) {
     setAccountNotice(message);
     setAccountNoticeIsError(isError);
@@ -89,16 +107,22 @@ export default function ProfileScreen() {
     try {
       const session = await checkoutMutation.mutateAsync();
       await Linking.openURL(session.url);
+      setBillingNotice("Se deschide pagina securizată Stripe pentru confirmarea plății.");
     } catch (error) {
-      showAccountNotice(error instanceof Error ? error.message : "Checkout-ul nu a putut fi deschis.", true);
+      const message = error instanceof Error ? error.message : "Checkout-ul nu a putut fi deschis.";
+      setBillingNotice(message);
+      showAccountNotice(message, true);
     }
   }
   async function manageSubscription() {
     try {
       const session = await portalMutation.mutateAsync();
       await Linking.openURL(session.url);
+      setBillingNotice("Se deschide portalul securizat pentru administrarea abonamentului.");
     } catch (error) {
-      showAccountNotice(error instanceof Error ? error.message : "Administrarea abonamentului nu a putut fi deschisă.", true);
+      const message = error instanceof Error ? error.message : "Administrarea abonamentului nu a putut fi deschisă.";
+      setBillingNotice(message);
+      showAccountNotice(message, true);
     }
   }
   async function signOut() {
@@ -116,6 +140,41 @@ export default function ProfileScreen() {
       ? preferences.preferredSubjects.filter((subject) => subject !== id)
       : [...preferences.preferredSubjects, id];
     updatePreferences({ preferredSubjects: next });
+  }
+  async function sendPartnershipRequest() {
+    const contactAddress = process.env.EXPO_PUBLIC_PARTNERSHIPS_EMAIL;
+    if (!schoolName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(schoolEmail.trim())) {
+      const message = "Completează numele instituției și o adresă de e-mail validă.";
+      setPartnershipNotice(message);
+      setAccountNotice(message);
+      setAccountNoticeIsError(true);
+      return;
+    }
+    if (!contactAddress || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactAddress)) {
+      const message = "Formularul nu poate trimite solicitarea: configurează EXPO_PUBLIC_PARTNERSHIPS_EMAIL cu adresa oficială de contact.";
+      setPartnershipNotice(message);
+      setAccountNotice(message);
+      setAccountNoticeIsError(true);
+      return;
+    }
+    const subject = "Solicitare colaborare educațională";
+    const body = [
+      `Instituție: ${schoolName.trim()}`,
+      `E-mail de contact: ${schoolEmail.trim()}`,
+      schoolNotes.trim() ? `Detalii: ${schoolNotes.trim()}` : "",
+    ].filter(Boolean).join("\n");
+    try {
+      await Linking.openURL(`mailto:${contactAddress}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+      setShowPartnership(false);
+      setPartnershipNotice("");
+      setAccountNotice("Solicitarea a fost pregătită în aplicația de e-mail. Trimite mesajul pentru a o transmite.");
+      setAccountNoticeIsError(false);
+    } catch (error) {
+      const message = error instanceof Error ? `Aplicația de e-mail nu s-a putut deschide: ${error.message}` : "Aplicația de e-mail nu s-a putut deschide.";
+      setPartnershipNotice(message);
+      setAccountNotice(message);
+      setAccountNoticeIsError(true);
+    }
   }
   return (
     <ScreenContainer safeAreaClassName="px-5">
@@ -382,6 +441,27 @@ export default function ProfileScreen() {
             ))}
           </View>
         </SurfaceCard>
+        <SectionHeading title="Ghid personalizat" />
+        <SurfaceCard style={styles.subjectCard}>
+          <Text style={[styles.subtleCopy, { color: colors.muted }]}>
+            Mini-diagnosticul salvează clasa, nivelul, materiile prioritare și răspunsurile pe acest dispozitiv; pentru conturile de elev, datele se sincronizează cu serverul.
+          </Text>
+          <Text style={[styles.accountBody, { color: colors.foreground }]}>
+            {preferences.diagnosticSubject
+              ? `Materie de pornire: ${preferences.diagnosticSubject} · ${preferences.schoolGrade} · ${preferences.level}`
+              : "Completează câteva întrebări scurte pentru a calibra recomandările."}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push({ pathname: "/tutor", params: { setup: "1" } })}
+            style={[styles.premiumAction, { borderColor: colors.primary }]}
+          >
+            <Text style={[styles.premiumActionText, { color: colors.primary }]}>
+              {preferences.tutorSetupComplete ? "Refă mini-diagnosticul" : "Începe mini-diagnosticul"}
+            </Text>
+            <MaterialIcons name="arrow-forward" size={17} color={colors.primary} />
+          </Pressable>
+        </SurfaceCard>
         <SectionHeading title="Preferințe" />
         <SurfaceCard style={styles.settingsCard}>
           <SettingRow
@@ -458,11 +538,11 @@ export default function ProfileScreen() {
                 Planul Premium
               </Text>
               <Text style={[styles.premiumSubtitle, { color: colors.muted }]}>
-                Abonament propus pentru lansare
+                Abonament lunar · pilot web
               </Text>
             </View>
             <Badge tone={billingStatus.data?.active ? colors.success : colors.warning}>
-              {billingStatus.data?.active ? "Activ" : "Plan pilot"}
+              {user && billingStatus.isPending ? "Se verifică" : billingStatus.isError && user ? "Indisponibil" : billingStatus.data?.active ? "Activ" : "Plan pilot"}
             </Badge>
           </View>
           <View style={styles.premiumPriceRow}>
@@ -478,6 +558,22 @@ export default function ProfileScreen() {
             Abonamentul lunar se plătește cu cardul pe web; contul elevului
             trebuie asociat contului părintelui.
           </Text>
+          {billingStatus.isPending && user ? (
+            <View style={styles.billingStatusRow}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={[styles.premiumDetailText, { color: colors.muted }]}>Se verifică starea abonamentului…</Text>
+            </View>
+          ) : null}
+          {billingStatus.isError && user ? (
+            <Text accessibilityRole="alert" style={[styles.premiumDetailText, { color: colors.error }]}>
+              Starea abonamentului nu a putut fi verificată. Verifică API-ul, baza de date și încearcă din nou.
+            </Text>
+          ) : null}
+          {billingNotice ? (
+            <Text accessibilityRole="alert" style={[styles.premiumDetailText, { color: billingNotice.includes("anulată") ? colors.muted : billingNotice.includes("nu") || billingNotice.includes("configurat") ? colors.error : colors.success }]}>
+              {billingNotice}
+            </Text>
+          ) : null}
           {billingStatus.data?.active ? (
             <>
               <Text style={[styles.premiumDetailText, { color: colors.success }]}>
@@ -486,14 +582,18 @@ export default function ProfileScreen() {
                   : ""}.
               </Text>
               {user?.accountType === "parent" && Platform.OS === "web" ? (
-                <Pressable onPress={manageSubscription} disabled={portalMutation.isPending} style={[styles.premiumAction, { borderColor: colors.border }]}>
-                  <Text style={[styles.premiumActionText, { color: colors.primary }]}>Administrează abonamentul</Text>
+                <Pressable onPress={manageSubscription} disabled={portalMutation.isPending} style={[styles.premiumAction, { borderColor: colors.border, opacity: portalMutation.isPending ? 0.6 : 1 }]}>
+                  <Text style={[styles.premiumActionText, { color: colors.primary }]}>{portalMutation.isPending ? "Se deschide portalul…" : "Administrează abonamentul"}</Text>
                 </Pressable>
               ) : null}
             </>
           ) : user?.accountType === "parent" && Platform.OS === "web" ? (
-            (parentOverview.data?.length ?? 0) === 1 ? (
-              <Pressable onPress={startCheckout} disabled={checkoutMutation.isPending} style={[styles.premiumAction, { borderColor: colors.primary, backgroundColor: `${colors.primary}12` }]}>
+            parentOverview.isLoading ? (
+              <Text style={[styles.premiumDetailText, { color: colors.muted }]}>Se verifică asocierea elevului…</Text>
+            ) : parentOverview.isError ? (
+              <Text accessibilityRole="alert" style={[styles.premiumDetailText, { color: colors.error }]}>Nu am putut verifica elevul asociat. Reîncarcă profilul și încearcă din nou.</Text>
+            ) : (parentOverview.data?.length ?? 0) === 1 ? (
+              <Pressable onPress={startCheckout} disabled={checkoutMutation.isPending} style={[styles.premiumAction, { borderColor: colors.primary, backgroundColor: `${colors.primary}12`, opacity: checkoutMutation.isPending ? 0.6 : 1 }]}>
                 <Text style={[styles.premiumActionText, { color: colors.primary }]}>
                   {checkoutMutation.isPending ? "Se deschide plata..." : "Continuă la plata cu cardul"}
                 </Text>
@@ -555,18 +655,21 @@ export default function ProfileScreen() {
             </View>
           ) : null}
         </SurfaceCard>
-        <SectionHeading title="Datele tale" />
+        <SectionHeading title={user?.accountType === "parent" ? "Asociere elev–părinte și progres" : user?.accountType === "student" ? "Legătura cu părintele" : "Cont și asociere elev–părinte"} />
         <SurfaceCard style={styles.accountCard}>
           {user ? <>
             <Text style={[styles.accountTitle, { color: colors.foreground }]}>{user.accountType === "student" ? "Cont de elev" : "Cont de părinte"}</Text>
             <Text style={[styles.accountBody, { color: colors.muted }]}>{user.name} · {user.email}</Text>
             {user.accountType === "student" ? <>
-              <Text style={[styles.accountBody, { color: colors.muted, marginTop: 8 }]}>Generează un cod temporar și oferă-l părintelui pentru a-i permite să vadă lecțiile și întrebările tale.</Text>
-              <Pressable onPress={createInvite} style={[styles.premiumAction, { borderColor: colors.border, marginTop: 12 }]}><Text style={[styles.premiumActionText, { color: colors.primary }]}>Creează cod pentru părinte</Text></Pressable>
+              <Text style={[styles.accountBody, { color: colors.muted, marginTop: 8 }]}>Pași: 1. Părintele își creează un cont de tip „Părinte”. 2. Generezi codul de mai jos, valabil 30 de minute. 3. Părintele intră în Profil → Asociere elev–părinte și introduce codul; apoi poate vedea progresul sincronizat.</Text>
+              <Pressable disabled={inviteMutation.isPending} onPress={createInvite} style={[styles.premiumAction, { borderColor: colors.border, marginTop: 12, opacity: inviteMutation.isPending ? 0.6 : 1 }]}><Text style={[styles.premiumActionText, { color: colors.primary }]}>{inviteMutation.isPending ? "Se generează codul…" : "Creează cod pentru părinte"}</Text></Pressable>
               {parentCode ? <Text selectable style={[styles.accountTitle, { color: colors.primary, marginTop: 10, letterSpacing: 2 }]}>{parentCode}</Text> : null}
             </> : <>
-              <TextInput value={inviteCode} onChangeText={setInviteCode} placeholder="Cod primit de la elev" placeholderTextColor={colors.muted} autoCapitalize="characters" style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border, marginTop: 12 }]} />
-              <Pressable onPress={connectStudent} style={[styles.premiumAction, { borderColor: colors.border, marginTop: 8 }]}><Text style={[styles.premiumActionText, { color: colors.primary }]}>Asociază elevul</Text></Pressable>
+              <Text style={[styles.accountBody, { color: colors.muted, marginTop: 8 }]}>Solicită elevului un cod temporar din Profilul său. Introdu codul aici; după asociere, progresul elevului apare în această secțiune.</Text>
+              <TextInput value={inviteCode} onChangeText={setInviteCode} placeholder="Cod primit de la elev" placeholderTextColor={colors.muted} autoCapitalize="characters" maxLength={16} style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border, marginTop: 12 }]} />
+              <Pressable disabled={linkMutation.isPending || inviteCode.trim().length !== 16} onPress={connectStudent} style={[styles.premiumAction, { borderColor: colors.border, marginTop: 8, opacity: linkMutation.isPending || inviteCode.trim().length !== 16 ? 0.6 : 1 }]}><Text style={[styles.premiumActionText, { color: colors.primary }]}>{linkMutation.isPending ? "Se asociază…" : "Asociază elevul"}</Text></Pressable>
+              {parentOverview.isLoading ? <Text style={[styles.accountBody, { color: colors.muted }]}>Se încarcă progresul asociat…</Text> : null}
+              {parentOverview.isError ? <Text accessibilityRole="alert" style={[styles.accountBody, { color: colors.error }]}>Progresul nu a putut fi încărcat. Verifică serverul și încearcă din nou.</Text> : null}
               {(parentOverview.data ?? []).map((student) => <View key={student.studentId} style={[styles.parentStudent, { borderColor: colors.border }]}>
                 <Text style={[styles.accountTitle, { color: colors.foreground }]}>{student.name}</Text>
                 <Text style={[styles.accountBody, { color: colors.muted }]}>{student.questionsAsked} întrebări · {student.lessons.length} materii/lecții urmărite</Text>
@@ -591,6 +694,16 @@ export default function ProfileScreen() {
           </>}
           {accountNotice ? <Text accessibilityRole="alert" style={[styles.accountBody, { color: accountNoticeIsError ? colors.error : colors.success, marginTop: 10 }]}>{accountNotice}</Text> : null}
         </SurfaceCard>
+        <SectionHeading title="Colaborări cu școli și centre" />
+        <SurfaceCard style={styles.accountCard}>
+          <Text style={[styles.accountBody, { color: colors.muted }]}>
+            Discutăm parteneriate instituționale, programe pilot și coduri de acces pentru clase sau ateliere. Trimite o solicitare cu datele instituției și echipa revine prin e-mail.
+          </Text>
+          <Pressable accessibilityRole="button" onPress={() => setShowPartnership(true)} style={[styles.premiumAction, { borderColor: colors.primary }]}>
+            <Text style={[styles.premiumActionText, { color: colors.primary }]}>Solicită o colaborare</Text>
+            <MaterialIcons name="mail-outline" size={18} color={colors.primary} />
+          </Pressable>
+        </SurfaceCard>
         {saved ? (
           <View style={styles.savedToast}>
             <MaterialIcons
@@ -604,6 +717,31 @@ export default function ProfileScreen() {
           </View>
         ) : null}
       </ScrollView>
+      <Modal visible={showPartnership} transparent animationType="fade" onRequestClose={() => setShowPartnership(false)}>
+        <View style={styles.partnershipBackdrop}>
+          <View style={[styles.partnershipCard, { backgroundColor: colors.background }]}>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              <View style={styles.partnershipHeader}>
+                <Text style={[styles.accountTitle, { color: colors.foreground }]}>Colaborare educațională</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel="Închide formularul" onPress={() => setShowPartnership(false)} hitSlop={8}>
+                  <MaterialIcons name="close" size={22} color={colors.muted} />
+                </Pressable>
+              </View>
+              <Text style={[styles.accountBody, { color: colors.muted }]}>Solicită detalii despre un program pilot sau coduri pentru o clasă ori un atelier.</Text>
+              <TextInput accessibilityLabel="Numele școlii sau centrului" value={schoolName} onChangeText={setSchoolName} placeholder="Școală / centru educațional" placeholderTextColor={colors.muted} style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border, marginTop: 10 }]} />
+              <TextInput accessibilityLabel="E-mail de contact" value={schoolEmail} onChangeText={setSchoolEmail} placeholder="E-mail de contact" placeholderTextColor={colors.muted} keyboardType="email-address" autoCapitalize="none" style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border }]} />
+              <TextInput accessibilityLabel="Detalii despre colaborare" value={schoolNotes} onChangeText={setSchoolNotes} placeholder="Tipul colaborării (opțional)" placeholderTextColor={colors.muted} multiline style={[styles.nameInput, styles.partnershipNotes, { color: colors.foreground, borderColor: colors.border }]} />
+              {!process.env.EXPO_PUBLIC_PARTNERSHIPS_EMAIL ? (
+                <Text style={[styles.premiumDetailText, { color: colors.warning }]}>Trimiterea necesită configurarea adresei publice EXPO_PUBLIC_PARTNERSHIPS_EMAIL.</Text>
+              ) : null}
+              {partnershipNotice ? <Text accessibilityRole="alert" style={[styles.premiumDetailText, { color: colors.error }]}>{partnershipNotice}</Text> : null}
+              <Pressable accessibilityRole="button" onPress={() => void sendPartnershipRequest()} style={[styles.partnershipSend, { backgroundColor: colors.primary }]}>
+                <Text style={styles.partnershipSendText}>Pregătește solicitarea prin e-mail</Text>
+              </Pressable>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </ScreenContainer>
   );
 }
@@ -735,6 +873,7 @@ const styles = StyleSheet.create({
   premiumActionText: { fontSize: 12, fontWeight: "800" },
   premiumDetails: { gap: 8, borderRadius: 11, padding: 11 },
   premiumDetailText: { fontSize: 11, lineHeight: 16 },
+  billingStatusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   settingsCard: { gap: 19, marginBottom: 27 },
   settingRow: { flexDirection: "row", alignItems: "center", gap: 11 },
   settingIcon: {
@@ -759,6 +898,12 @@ const styles = StyleSheet.create({
   parentStudent: { borderTopWidth: 1, marginTop: 14, paddingTop: 12 },
   accountTitle: { fontSize: 15, fontWeight: "800" },
   accountBody: { fontSize: 12, lineHeight: 18 },
+  partnershipBackdrop: { flex: 1, justifyContent: "center", alignItems: "center", padding: 18, backgroundColor: "rgba(20, 20, 40, 0.56)" },
+  partnershipCard: { width: "100%", maxWidth: 520, maxHeight: "90%", borderRadius: 20, padding: 18 },
+  partnershipHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 },
+  partnershipNotes: { minHeight: 76, textAlignVertical: "top" },
+  partnershipSend: { minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 12, marginTop: 6, paddingHorizontal: 10 },
+  partnershipSendText: { color: "#FFFFFF", fontSize: 11, fontWeight: "900", textAlign: "center" },
   savedToast: {
     flexDirection: "row",
     alignItems: "center",

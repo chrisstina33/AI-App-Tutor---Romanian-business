@@ -2,7 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   loadSavedTutorLesson,
   loadSavedTutorLessons,
+  loadTutorChats,
   loadTutorMessages,
+  renameTutorChat,
+  deleteTutorChat,
+  saveTutorChat,
   saveTutorLesson,
   saveTutorMessages,
 } from "../lib/tutor-storage";
@@ -89,5 +93,34 @@ describe("on-device tutor lesson storage", () => {
     );
 
     expect(await loadSavedTutorLessons()).toHaveLength(1);
+  });
+
+  it("stores, renames, and deletes independent local tutor chats", async () => {
+    const first = {
+      id: "session-1",
+      title: "Ecuații",
+      subject: "Matematică",
+      updatedAt: new Date().toISOString(),
+      messages: [
+        { id: "question-1", role: "user" as const, text: "Cum rezolv 2x = 8?", createdAt: 1 },
+      ],
+    };
+    const second = {
+      ...first,
+      id: "session-2",
+      title: "Forțe",
+      subject: "Fizică",
+    };
+
+    await saveTutorChat(first);
+    await saveTutorChat(second);
+    await renameTutorChat("session-1", "Ecuații liniare");
+
+    expect((await loadTutorChats()).map((chat) => chat.title)).toEqual(
+      expect.arrayContaining(["Forțe", "Ecuații liniare"]),
+    );
+    expect((await deleteTutorChat("session-2")).map((chat) => chat.id)).toEqual([
+      "session-1",
+    ]);
   });
 });

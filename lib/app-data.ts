@@ -15,7 +15,12 @@ export const SUBJECTS: Subject[] = [
 export function recommendSubject(
   preferredSubjects: string[],
   activity: { subject: string; questionCount: number }[],
+  diagnosticSubject?: string,
 ): Subject {
+  const diagnosedPriority = SUBJECTS.find(
+    (subject) => subject.label === diagnosticSubject,
+  );
+  if (diagnosedPriority) return diagnosedPriority;
   const preferred = SUBJECTS.filter((subject) =>
     preferredSubjects.includes(subject.id),
   );

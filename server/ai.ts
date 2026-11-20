@@ -175,6 +175,15 @@ export function parseTutorResponse(rawText: string) {
       console.warn("[Tutor] Invalid diagram structure omitted", diagramError);
       return { ...parsed.data, diagram: null };
     }
+    if (
+      parsed.data.diagram.category === "geometry"
+      || parsed.data.diagram.category === "chemistry"
+    ) {
+      return {
+        ...parsed.data,
+        diagram: { ...parsed.data.diagram, schematic: true },
+      };
+    }
   }
   return parsed.data;
 }

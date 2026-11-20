@@ -5,6 +5,7 @@ import type { TutorMessage } from "../services/ai-service";
 
 const STORAGE_KEY = "elunariq.tutor-messages.v1";
 const SESSION_ID_KEY = "elunariq.tutor-session-id.v1";
+const TUTOR_CHATS_KEY = "elunariq.tutor-chats.v1";
 const SAVED_LESSONS_KEY = "elunariq.saved-tutor-lessons.v1";
 const tutorMessageSchema = z.object({
   id: z.string().min(1),
@@ -36,6 +37,15 @@ const savedTutorLessonSchema = z.object({
 }).strict();
 export type SavedTutorLesson = z.infer<typeof savedTutorLessonSchema>;
 const savedTutorLessonsSchema = z.array(savedTutorLessonSchema).max(50);
+const tutorChatSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1).max(200),
+  subject: z.string().min(1).max(80),
+  updatedAt: z.string().datetime(),
+  messages: tutorMessagesSchema,
+}).strict();
+const tutorChatsSchema = z.array(tutorChatSchema).max(50);
+export type TutorChat = z.infer<typeof tutorChatSchema>;
 
 export async function loadTutorMessages(): Promise<TutorMessage[]> {
   try {
@@ -69,6 +79,73 @@ export async function loadTutorSessionId(): Promise<string | null> {
 
 export async function saveTutorSessionId(sessionId: string): Promise<void> {
   await AsyncStorage.setItem(SESSION_ID_KEY, sessionId);
+}
+
+export async function loadTutorChats(defaultSubject = "Materia nespecificată"): Promise<TutorChat[]> {
+  try {
+    const serialized = await AsyncStorage.getItem(TUTOR_CHATS_KEY);
+    if (serialized) {
+      const parsed = tutorChatsSchema.safeParse(JSON.parse(serialized));
+      return parsed.success
+        ? [...parsed.data].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        : [];
+    }
+
+    const messages = await loadTutorMessages();
+    if (!messages.length) return [];
+    const id = (await loadTutorSessionId()) ?? "legacy-session";
+    const firstQuestion = messages.find((message) => message.role === "user")?.text;
+    const migrated: TutorChat = {
+      id,
+      title: (firstQuestion ?? "Conversație").slice(0, 200),
+      subject: defaultSubject,
+      updatedAt: new Date().toISOString(),
+      messages,
+    };
+    await AsyncStorage.setItem(TUTOR_CHATS_KEY, JSON.stringify([migrated]));
+    return [migrated];
+  } catch {
+    return [];
+  }
+}
+
+let chatWriteQueue: Promise<void> = Promise.resolve();
+
+function updateTutorChats(
+  update: (chats: TutorChat[]) => TutorChat[],
+): Promise<TutorChat[]> {
+  const write = chatWriteQueue.then(async () => {
+    const chats = update(await loadTutorChats());
+    await AsyncStorage.setItem(TUTOR_CHATS_KEY, JSON.stringify(chats.slice(0, 50)));
+    return chats.slice(0, 50);
+  });
+  chatWriteQueue = write.then(() => undefined, () => undefined);
+  return write;
+}
+
+export async function saveTutorChat(chat: TutorChat): Promise<TutorChat[]> {
+  const parsed = tutorChatSchema.parse(chat);
+  return updateTutorChats((chats) => [
+    parsed,
+    ...chats.filter((item) => item.id !== parsed.id),
+  ]);
+}
+
+export async function renameTutorChat(id: string, title: string): Promise<TutorChat[]> {
+  const normalizedTitle = title.trim();
+  if (!normalizedTitle) throw new Error("Scrie un nume pentru conversație.");
+  return updateTutorChats((chats) => {
+    const existing = chats.find((chat) => chat.id === id);
+    if (!existing) throw new Error("Conversația nu mai este disponibilă.");
+    return [
+      { ...existing, title: normalizedTitle.slice(0, 200), updatedAt: new Date().toISOString() },
+      ...chats.filter((chat) => chat.id !== id),
+    ];
+  });
+}
+
+export async function deleteTutorChat(id: string): Promise<TutorChat[]> {
+  return updateTutorChats((chats) => chats.filter((chat) => chat.id !== id));
 }
 
 function deduplicateLessons(lessons: SavedTutorLesson[]): SavedTutorLesson[] {

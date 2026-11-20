@@ -58,4 +58,13 @@ describe("math formatting", () => {
     expect(formatted).toBe("a⁄b⁄c = x⁄y; x = 2");
     expect(formatted).not.toMatch(/[\\{}]/);
   });
+
+  it("renders plain matrix environments without exposing LaTeX commands", () => {
+    const formatted = formatLatexForDisplay(
+      "\\begin{matrix}1 & 2 \\\\ 3 & 4\\end{matrix}",
+    );
+
+    expect(formatted).toBe("⎡1 2; 3 4⎤");
+    expect(formatted).not.toContain("\\begin");
+  });
 });

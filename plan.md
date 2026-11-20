@@ -72,6 +72,6 @@ Interfața principală și tutorul sunt în limba română. Dashboardul nu folos
 
 Tutorul adoptă o pedagogie socratică inspirată de bunele practici publice observate la Astra AI: problemă fotografiată sau încărcată, explicație pas cu pas, întrebări de verificare, practică și răspuns complet la cerere. Elunariq se diferențiază prin regula „un singur pas și o singură întrebare pe mesaj”, afișare progresivă fără streaming pretins, formule în notație LaTeX și cererea explicită a încercării elevului înainte de următorul pas.
 
-Model routing-ul este server-side: `gpt-5-mini` pentru dialog de rutină, scanare și clasificare, `gpt-5` pentru răspunsuri extinse sau probleme cu risc de inconsistență, iar modelul premium din catalogul live este `gpt-5.5` pentru probleme lungi și dificile. Catalogul live verificat nu oferă în prezent un model `gpt-5-pro`, de aceea aplicația nu îl pretinde disponibil.
+Model routing-ul este server-side: `gpt-5-mini` pentru dialog de rutină, scanare și clasificare, `gpt-5` pentru răspunsuri extinse sau probleme cu risc de inconsistență, iar modelul premium din catalogul live este `gpt-5.5` pentru probleme lungi și dificile.
 
 Au fost adăugate exportul conversației în PDF, recapitularea săptămânală în PDF, disclosure pentru voce și transcriere, profil cu rol elev/părinte, nivel/clasă, avatar editabil și preferințe de accesibilitate. Când un serviciu de transcriere sau analiză a imaginilor nu este configurat, aplicația declară limita și nu simulează analiza.

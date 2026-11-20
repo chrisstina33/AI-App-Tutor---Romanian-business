@@ -29,6 +29,7 @@ export const learnerStateSchema = z.object({
     studiedTopicsSubject: z.string().max(80).default(""),
     diagnosticScore: z.number().int().min(0).max(3).default(0),
     diagnosticSubject: z.string().max(80).default(""),
+    diagnosticAnswers: z.array(z.boolean()).max(3).default([]),
     tutorSetupComplete: z.boolean().default(false),
   }),
   questionsAsked: z.number().int().min(0).max(1_000_000),

@@ -1,6 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { router } from "expo-router";
-import { useMemo, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { Badge, IconButton, ProgressBar, ScreenHeader, SectionHeading, SurfaceCard } from "@/components/bionis-ui";
@@ -9,12 +9,21 @@ import { SUBJECTS } from "@/lib/app-data";
 import { generateLearningPdf } from "@/lib/pdf";
 import { ro } from "@/lib/i18n";
 import { useLearnerData } from "@/lib/learner-context";
+import { loadSavedTutorLessons, type SavedTutorLesson } from "@/lib/tutor-storage";
 
 export default function ProgressScreen() {
   const colors = useColors();
   const { state, loading } = useLearnerData();
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfNotice, setPdfNotice] = useState("");
+  const [savedTutorLessons, setSavedTutorLessons] = useState<SavedTutorLesson[]>([]);
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    void loadSavedTutorLessons().then((lessons) => {
+      if (active) setSavedTutorLessons(lessons);
+    });
+    return () => { active = false; };
+  }, []));
   const recentLessons = useMemo(
     () => [...state.lessonActivity].sort(
       (a, b) => new Date(b.lastStudiedAt).getTime() - new Date(a.lastStudiedAt).getTime(),
@@ -149,6 +158,20 @@ export default function ProgressScreen() {
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Nu ai lecții salvate încă</Text>
             <Text style={[styles.emptyBody, { color: colors.muted }]}>Întrebările adresate tutorului sunt contorizate separat și nu devin automat lecții.</Text>
           </SurfaceCard>
+        )}
+
+        <SectionHeading title="Lecții salvate pe acest dispozitiv" />
+        {savedTutorLessons.length ? savedTutorLessons.map((lesson) => (
+          <SurfaceCard key={lesson.id} style={styles.lessonRow} onPress={() => router.push({ pathname: "/tutor", params: { lessonId: lesson.id } })}>
+            <MaterialIcons name="bookmark" size={18} color={colors.primary} />
+            <View style={styles.lessonCopy}>
+              <Text style={[styles.lessonTitle, { color: colors.foreground }]} numberOfLines={2}>{lesson.title}</Text>
+              <Text style={[styles.lessonMeta, { color: colors.muted }]}>Salvat pe acest dispozitiv · {lesson.subject} · {lesson.messages.length} mesaje</Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={19} color={colors.muted} />
+          </SurfaceCard>
+        )) : (
+          <Text style={[styles.sectionHint, { color: colors.muted }]}>Lecțiile salvate în Ghid apar aici separat de progresul sincronizat.</Text>
         )}
 
         <SectionHeading title={ro.weeklyRecap} />

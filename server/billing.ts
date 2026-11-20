@@ -78,9 +78,9 @@ function checkoutUrls() {
     });
   }
   return {
-    success: new URL("/?billing=success", base).toString(),
-    cancel: new URL("/?billing=cancel", base).toString(),
-    return: new URL("/", base).toString(),
+    success: new URL("/profile?billing=success", base).toString(),
+    cancel: new URL("/profile?billing=cancel", base).toString(),
+    return: new URL("/profile", base).toString(),
   };
 }
 

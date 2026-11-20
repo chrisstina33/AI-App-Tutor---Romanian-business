@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -44,11 +45,16 @@ import {
 } from "@/lib/storage";
 import {
   loadTutorSessionId,
+  loadTutorChats,
   loadSavedTutorLesson,
   loadTutorMessages,
+  deleteTutorChat,
+  renameTutorChat,
   saveTutorSessionId,
+  saveTutorChat,
   saveTutorLesson,
   saveTutorMessages,
+  type TutorChat,
 } from "@/lib/tutor-storage";
 import {
   buildQuickActionQuestion,
@@ -87,16 +93,25 @@ async function readBase64(uri: string): Promise<string> {
 export default function TutorScreen() {
   const colors = useColors();
   const { recordQuestion, state: learnerState, loading: learnerLoading, updatePreferences } = useLearnerData();
-  const params = useLocalSearchParams<{ autoUpload?: string; subject?: string; lessonId?: string }>();
+  const params = useLocalSearchParams<{ autoUpload?: string; subject?: string; lessonId?: string; setup?: string }>();
   const [subject, setSubject] = useState(
-    () => SUBJECTS.find((item) => item.label === params.subject)?.label ?? SUBJECTS[0].label,
+    () => SUBJECTS.find((item) => item.label === params.subject)?.label
+      ?? SUBJECTS.find((item) => item.label === learnerState.preferences.diagnosticSubject)?.label
+      ?? SUBJECTS.find((item) => item.id === learnerState.preferences.preferredSubjects[0])?.label
+      ?? SUBJECTS[0].label,
   );
+  const [chatTitle, setChatTitle] = useState("Chat nou");
+  const [chats, setChats] = useState<TutorChat[]>([]);
+  const [showChats, setShowChats] = useState(false);
+  const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const [agent, setAgent] = useState("Ghid socratic");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<TutorMessage[]>([INITIAL_MESSAGE]);
   const [messagesLoaded, setMessagesLoaded] = useState(false);
   const [sessionId, setSessionId] = useState(() => createMessageId("session"));
   const [lessonSaved, setLessonSaved] = useState(false);
+  const [savingLesson, setSavingLesson] = useState(false);
   const [pending, setPending] = useState(false);
   const [mode, setMode] = useState<TutorMode>("guided");
   const [uploads, setUploads] = useState<PendingUpload[]>([]);
@@ -121,25 +136,36 @@ export default function TutorScreen() {
   }, [params.autoUpload]);
   useFocusEffect(useCallback(() => {
     const requestedSubject = SUBJECTS.find((item) => item.label === params.subject);
-    if (requestedSubject && requestedSubject.label !== subject) {
-      setSubject(requestedSubject.label);
-    }
-  }, [params.subject, subject]));
+    if (requestedSubject) setSubject(requestedSubject.label);
+  }, [params.subject]));
   useEffect(() => {
     let active = true;
     void (async () => {
       const savedLesson = params.lessonId
         ? await loadSavedTutorLesson(params.lessonId)
         : null;
-      const savedMessages = savedLesson?.messages ?? await loadTutorMessages();
-      const activeSessionId =
-        savedLesson?.sessionId ??
-        savedLesson?.id ??
-        (await loadTutorSessionId()) ??
-        createMessageId("session");
+      const defaultSubject = SUBJECTS.find(
+        (item) => item.label === learnerState.preferences.diagnosticSubject,
+      )?.label ?? SUBJECTS.find(
+        (item) => item.id === learnerState.preferences.preferredSubjects[0],
+      )?.label ?? SUBJECTS[0].label;
+      const savedChats = await loadTutorChats(defaultSubject);
+      const rememberedId = await loadTutorSessionId();
+      const activeChat = savedChats.find((chat) => chat.id === rememberedId)
+        ?? savedChats[0];
+      const savedMessages = savedLesson?.messages
+        ?? activeChat?.messages
+        ?? await loadTutorMessages();
+      const activeSessionId = savedLesson?.sessionId
+        ?? savedLesson?.id
+        ?? activeChat?.id
+        ?? rememberedId
+        ?? createMessageId("session");
       if (!savedLesson) await saveTutorSessionId(activeSessionId);
       if (!active) return;
       setSessionId(activeSessionId);
+      setChats(savedChats);
+      setChatTitle(savedLesson?.title ?? activeChat?.title ?? "Chat nou");
       setLessonSaved(Boolean(savedLesson));
       if (savedLesson) {
         setMessages(savedLesson.messages);
@@ -147,12 +173,44 @@ export default function TutorScreen() {
       } else if (savedMessages.length) {
         setMessages(savedMessages);
       }
+      if (savedLesson) {
+        const chat = {
+          id: activeSessionId,
+          title: savedLesson.title,
+          subject: savedLesson.subject,
+          updatedAt: new Date().toISOString(),
+          messages: savedLesson.messages,
+        };
+        void saveTutorChat(chat).then(setChats).catch((error: unknown) => {
+          setNotice(error instanceof Error ? `Lecția nu a putut fi adăugată la chaturi: ${error.message}` : "Lecția nu a putut fi adăugată la chaturi.");
+        });
+      } else if (activeChat) {
+        setSubject(activeChat.subject);
+      }
       setMessagesLoaded(true);
     })();
     return () => {
       active = false;
     };
   }, [params.lessonId]);
+  useEffect(() => {
+    if (params.setup === "1") setShowTutorSetup(true);
+  }, [params.setup]);
+  useEffect(() => {
+    if (learnerLoading || params.lessonId || params.subject) return;
+    const preferred = SUBJECTS.find(
+      (item) => item.label === learnerState.preferences.diagnosticSubject,
+    ) ?? SUBJECTS.find(
+      (item) => item.id === learnerState.preferences.preferredSubjects[0],
+    );
+    if (preferred) setSubject(preferred.label);
+  }, [
+    learnerLoading,
+    learnerState.preferences.diagnosticSubject,
+    learnerState.preferences.preferredSubjects,
+    params.lessonId,
+    params.subject,
+  ]);
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
@@ -175,8 +233,24 @@ export default function TutorScreen() {
     };
   }, []);
   useEffect(() => {
-    if (messagesLoaded) void saveTutorMessages(messages);
-  }, [messages, messagesLoaded]);
+    if (!messagesLoaded) return;
+    void saveTutorMessages(messages);
+    const firstQuestion = messages.find((message) => message.role === "user")?.text;
+    const title = chatTitle === "Chat nou" && firstQuestion
+      ? firstQuestion.slice(0, 200)
+      : chatTitle;
+    if (title !== chatTitle) setChatTitle(title);
+    void saveTutorChat({
+      id: sessionId,
+      title,
+      subject,
+      updatedAt: new Date().toISOString(),
+      messages,
+    }).then(setChats).catch((error: unknown) => {
+      const detail = error instanceof Error ? error.message : "Eroare necunoscută";
+      setNotice(`Conversația nu a putut fi salvată pe acest dispozitiv: ${detail}`);
+    });
+  }, [chatTitle, messages, messagesLoaded, sessionId, subject]);
   const history = useMemo(
     () => messages.map(({ role, text }) => ({ role, text })),
     [messages],
@@ -413,12 +487,112 @@ export default function TutorScreen() {
     }
   }
   async function saveCurrentLesson() {
+    if (savingLesson) return;
+    setSavingLesson(true);
     try {
       const lesson = await saveTutorLesson(sessionId, subject, messages);
       setLessonSaved(true);
-      setNotice(`Lecția „${lesson.title}” a fost salvată pe acest dispozitiv.`);
+      setNotice(`Lecția „${lesson.title}” a fost salvată pe acest dispozitiv. Apare în Panou și Progres.`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Lecția nu a putut fi salvată.");
+    } finally {
+      setSavingLesson(false);
+    }
+  }
+  async function startNewChat() {
+    if (pending) return;
+    try {
+      await saveTutorChat({
+        id: sessionId,
+        title: chatTitle,
+        subject,
+        updatedAt: new Date().toISOString(),
+        messages,
+      });
+      const nextId = createMessageId("session");
+      const nextChat: TutorChat = {
+        id: nextId,
+        title: "Chat nou",
+        subject: SUBJECTS.find((item) => item.label === learnerState.preferences.diagnosticSubject)?.label
+          ?? SUBJECTS.find((item) => item.id === learnerState.preferences.preferredSubjects[0])?.label
+          ?? SUBJECTS[0].label,
+        updatedAt: new Date().toISOString(),
+        messages: [INITIAL_MESSAGE],
+      };
+      setChats(await saveTutorChat(nextChat));
+      setSessionId(nextId);
+      setChatTitle(nextChat.title);
+      setSubject(nextChat.subject);
+      setMessages([INITIAL_MESSAGE]);
+      setLessonSaved(false);
+      setMessagesLoaded(true);
+      await saveTutorSessionId(nextId);
+      setShowChats(false);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Chatul nou nu a putut fi creat.");
+    }
+  }
+  async function openChat(chat: TutorChat) {
+    if (pending) return;
+    setSessionId(chat.id);
+    setChatTitle(chat.title);
+    setSubject(chat.subject);
+    setMessages(chat.messages);
+    setLessonSaved(false);
+    setMessagesLoaded(true);
+    setShowChats(false);
+    try {
+      await saveTutorSessionId(chat.id);
+    } catch (error) {
+      setNotice(error instanceof Error ? `Sesiunea nu a putut fi actualizată pe acest dispozitiv: ${error.message}` : "Sesiunea nu a putut fi actualizată pe acest dispozitiv.");
+    }
+  }
+  async function commitRename() {
+    if (!renamingChatId) return;
+    try {
+      const updated = await renameTutorChat(renamingChatId, renameValue);
+      setChats(updated);
+      if (sessionId === renamingChatId) setChatTitle(renameValue.trim().slice(0, 200));
+      setRenamingChatId(null);
+      setRenameValue("");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Conversația nu a putut fi redenumită.");
+    }
+  }
+  function confirmDeleteChat(chat: TutorChat) {
+    if (pending) return;
+    const remove = async () => {
+      try {
+        const updated = await deleteTutorChat(chat.id);
+        setChats(updated);
+        if (sessionId === chat.id) {
+          const replacement = updated[0];
+          if (replacement) await openChat(replacement);
+          else {
+            const nextId = createMessageId("session");
+            const nextSubject = SUBJECTS.find((item) => item.label === learnerState.preferences.diagnosticSubject)?.label
+              ?? SUBJECTS.find((item) => item.id === learnerState.preferences.preferredSubjects[0])?.label
+              ?? SUBJECTS[0].label;
+            setSessionId(nextId);
+            setChatTitle("Chat nou");
+            setSubject(nextSubject);
+            setMessages([INITIAL_MESSAGE]);
+            setLessonSaved(false);
+            await saveTutorSessionId(nextId);
+            setShowChats(false);
+          }
+        }
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : "Conversația nu a putut fi ștearsă.");
+      }
+    };
+    if (Platform.OS === "web") {
+      if (window.confirm(`Ștergi conversația „${chat.title}”?`)) void remove();
+    } else {
+      Alert.alert("Ștergi conversația?", `„${chat.title}” va fi eliminată de pe acest dispozitiv.`, [
+        { text: "Anulează", style: "cancel" },
+        { text: "Șterge", style: "destructive", onPress: () => void remove() },
+      ]);
     }
   }
   async function exportPdf(additionalMessages: TutorMessage[] = [], pdfSubject = subject) {
@@ -529,7 +703,15 @@ export default function TutorScreen() {
             eyebrow={ro.tutorEyebrow}
             title={ro.tutor}
             compact
-            action={<IconButton icon="tune" label="Configurează nivelul și programa" onPress={() => setShowTutorSetup(true)} size={36} />}
+            action={
+              <View style={styles.headerActions}>
+                <Pressable accessibilityRole="button" onPress={() => setShowChats(true)} style={[styles.chatsButton, { borderColor: colors.border }]}>
+                  <MaterialIcons name="forum" size={15} color={colors.primary} />
+                  <Text style={[styles.chatsButtonText, { color: colors.foreground }]}>Chaturi</Text>
+                </Pressable>
+                <IconButton icon="tune" label="Configurează nivelul și programa" onPress={() => setShowTutorSetup(true)} size={36} />
+              </View>
+            }
           />
         </View>
         <View style={styles.controlRow}>
@@ -851,17 +1033,20 @@ export default function TutorScreen() {
           <View style={styles.footerActions}>
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel={lessonSaved ? "Lecție salvată pe acest dispozitiv" : "Salvează lecția pe acest dispozitiv"}
               onPress={() => void saveCurrentLesson()}
-              disabled={pending}
+              disabled={pending || savingLesson}
+              style={[styles.footerAction, { borderColor: colors.border }]}
             >
               <Text style={[styles.modeToggle, { color: colors.primary }]}>
-                Salvează lecția
+                {savingLesson ? "Se salvează…" : lessonSaved ? "Salvat local" : "Salvează lecția"}
               </Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
               onPress={() => void exportPdf()}
               disabled={pdfBusy}
+              style={[styles.footerAction, { borderColor: colors.border }]}
             >
               <Text style={[styles.modeToggle, { color: colors.primary }]}>
                 {pdfBusy ? "Se pregătește…" : "Descarcă fișa PDF"}
@@ -872,6 +1057,7 @@ export default function TutorScreen() {
               onPress={() =>
                 setMode((value) => (value === "direct" ? "guided" : "direct"))
               }
+              style={[styles.footerAction, { borderColor: colors.border }]}
             >
               <Text style={[styles.modeToggle, { color: colors.primary }]}>
                 {mode === "direct"
@@ -886,6 +1072,12 @@ export default function TutorScreen() {
         <TutorOnboarding
           canDismiss={learnerState.preferences.tutorSetupComplete}
           subject={subject}
+          prioritySubjects={[
+            learnerState.preferences.diagnosticSubject,
+            ...learnerState.preferences.preferredSubjects.map(
+              (id) => SUBJECTS.find((item) => item.id === id)?.label ?? "",
+            ),
+          ].filter((value, index, list) => Boolean(value) && list.indexOf(value) === index)}
           schoolGrade={learnerState.preferences.schoolGrade}
           level={learnerState.preferences.level}
           studiedTopics={
@@ -903,6 +1095,10 @@ export default function TutorScreen() {
               studiedTopicsSubject: setup.subject,
               diagnosticScore: setup.diagnosticScore,
               diagnosticSubject: setup.subject,
+              diagnosticAnswers: setup.diagnosticAnswers,
+              preferredSubjects: setup.subjects
+                .map((label) => SUBJECTS.find((item) => item.label === label)?.id)
+                .filter((id): id is string => Boolean(id)),
               tutorSetupComplete: true,
             });
             setShowTutorSetup(false);
@@ -910,11 +1106,67 @@ export default function TutorScreen() {
           }}
         />
       ) : null}
+      <Modal visible={showChats} transparent animationType="fade" onRequestClose={() => setShowChats(false)}>
+        <View style={styles.sheetBackdrop}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Închide lista chaturilor" onPress={() => setShowChats(false)} style={StyleSheet.absoluteFill} />
+          <View style={[styles.chatSheet, { backgroundColor: colors.background }]}>
+            <View style={styles.chatSheetHeader}>
+              <View style={styles.chatSheetTitleWrap}>
+                <Text style={[styles.chatSheetTitle, { color: colors.foreground }]}>Chaturi</Text>
+                <Text style={[styles.chatSheetHint, { color: colors.muted }]}>Conversațiile sunt păstrate local pe acest dispozitiv.</Text>
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel="Închide" onPress={() => setShowChats(false)} hitSlop={8}>
+                <MaterialIcons name="close" size={22} color={colors.muted} />
+              </Pressable>
+            </View>
+            {renamingChatId ? (
+              <View style={styles.renameRow}>
+                <TextInput
+                  accessibilityLabel="Numele conversației"
+                  value={renameValue}
+                  onChangeText={setRenameValue}
+                  placeholder="Numele conversației"
+                  placeholderTextColor={colors.muted}
+                  maxLength={200}
+                  style={[styles.renameInput, { color: colors.foreground, borderColor: colors.border }]}
+                />
+                <Pressable accessibilityRole="button" onPress={() => void commitRename()} style={[styles.renameSave, { backgroundColor: colors.primary }]}>
+                  <Text style={styles.renameSaveText}>Salvează</Text>
+                </Pressable>
+              </View>
+            ) : null}
+            <ScrollView style={styles.chatList} keyboardShouldPersistTaps="handled">
+              {chats.map((chat) => (
+                <View key={chat.id} style={[styles.chatRow, { borderColor: colors.border, backgroundColor: chat.id === sessionId ? `${colors.primary}10` : colors.surface }]}>
+                  <Pressable accessibilityRole="button" onPress={() => void openChat(chat)} style={styles.chatSelect}>
+                    <Text numberOfLines={1} style={[styles.chatTitle, { color: colors.foreground }]}>{chat.title}</Text>
+                    <Text style={[styles.chatMeta, { color: colors.muted }]}>{chat.subject} · {new Date(chat.updatedAt).toLocaleDateString("ro-RO")}</Text>
+                  </Pressable>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Redenumește ${chat.title}`} hitSlop={8} onPress={() => { setRenamingChatId(chat.id); setRenameValue(chat.title); }}>
+                    <MaterialIcons name="edit" size={18} color={colors.primary} />
+                  </Pressable>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Șterge ${chat.title}`} hitSlop={8} onPress={() => confirmDeleteChat(chat)}>
+                    <MaterialIcons name="delete-outline" size={19} color={colors.error} />
+                  </Pressable>
+                </View>
+              ))}
+              {!chats.length ? <Text style={[styles.chatEmpty, { color: colors.muted }]}>Nu ai conversații salvate încă.</Text> : null}
+            </ScrollView>
+            <Pressable accessibilityRole="button" onPress={() => void startNewChat()} style={[styles.newChatButton, { backgroundColor: colors.primary }]}>
+              <MaterialIcons name="add" size={19} color="#FFFFFF" />
+              <Text style={styles.newChatText}>Chat nou</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </ScreenContainer>
   );
 }
 const styles = StyleSheet.create({
   topBar: { marginBottom: 0 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 6 },
+  chatsButton: { minHeight: 36, flexDirection: "row", alignItems: "center", gap: 5, borderWidth: 1, borderRadius: 11, paddingHorizontal: 9 },
+  chatsButtonText: { fontSize: 11, fontWeight: "800" },
   controlRow: { flexDirection: "row", gap: 7, marginBottom: 6 },
   selector: {
     flex: 1,
@@ -968,13 +1220,14 @@ const styles = StyleSheet.create({
   quickActions: { marginTop: 2, marginBottom: 4 },
   quickActionsContent: { gap: 5, paddingVertical: 1 },
   quickAction: {
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
     borderRadius: 9,
     borderWidth: 1,
     paddingHorizontal: 8,
-    paddingVertical: 6,
+    paddingVertical: 8,
   },
   quickActionText: { fontSize: 10, fontWeight: "800" },
   composer: {
@@ -1016,11 +1269,30 @@ const styles = StyleSheet.create({
   smallActionText: { color: "#FFFFFF", fontSize: 11, fontWeight: "800" },
   footerRow: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 3,
-    gap: 6,
+    alignItems: "flex-start",
+    flexWrap: "wrap",
+    paddingVertical: 4,
+    gap: 5,
   },
-  footerActions: { flex: 1, alignItems: "flex-end", gap: 5 },
-  modeToggle: { fontSize: 10, fontWeight: "800" },
+  footerActions: { flex: 1, minWidth: "100%", flexDirection: "row", flexWrap: "wrap", gap: 5 },
+  footerAction: { minHeight: 44, justifyContent: "center", borderWidth: 1, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 7 },
+  modeToggle: { fontSize: 10, fontWeight: "800", textAlign: "center" },
+  sheetBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(20, 20, 40, 0.56)" },
+  chatSheet: { width: "100%", maxWidth: 620, maxHeight: "82%", alignSelf: "center", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18 },
+  chatSheetHeader: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 14 },
+  chatSheetTitleWrap: { flex: 1, gap: 3 },
+  chatSheetTitle: { fontSize: 20, fontWeight: "900" },
+  chatSheetHint: { fontSize: 11, lineHeight: 16 },
+  chatList: { flexShrink: 1 },
+  chatRow: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 14, borderWidth: 1, borderRadius: 13, paddingHorizontal: 12, marginBottom: 8 },
+  chatSelect: { flex: 1, justifyContent: "center", minHeight: 56 },
+  chatTitle: { fontSize: 12, fontWeight: "800" },
+  chatMeta: { fontSize: 10, marginTop: 4 },
+  chatEmpty: { paddingVertical: 22, textAlign: "center", fontSize: 12 },
+  newChatButton: { minHeight: 46, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, borderRadius: 13, marginTop: 8 },
+  newChatText: { color: "#FFFFFF", fontSize: 12, fontWeight: "900" },
+  renameRow: { flexDirection: "row", gap: 8, marginBottom: 10 },
+  renameInput: { flex: 1, minHeight: 42, borderWidth: 1, borderRadius: 11, paddingHorizontal: 10, fontSize: 12 },
+  renameSave: { minHeight: 42, borderRadius: 11, paddingHorizontal: 12, justifyContent: "center" },
+  renameSaveText: { color: "#FFFFFF", fontSize: 11, fontWeight: "900" },
 });
