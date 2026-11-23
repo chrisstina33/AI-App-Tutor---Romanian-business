@@ -1,6 +1,10 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { verifyStripeWebhook } from "../server/billing";
+import {
+  PREMIUM_MONTHLY_PRICE_LABEL,
+  PREMIUM_MONTHLY_PRICE_MINOR,
+} from "../shared/billing";
 
 describe("Stripe webhook signature verification", () => {
   const secret = "whsec_test_secret";
@@ -47,5 +51,12 @@ describe("Stripe webhook signature verification", () => {
         timestamp,
       ),
     ).toThrow("Invalid Stripe webhook signature.");
+  });
+});
+
+describe("Premium subscription price", () => {
+  it("uses the same 29 RON monthly price for display and Stripe checkout", () => {
+    expect(PREMIUM_MONTHLY_PRICE_MINOR).toBe(2_900);
+    expect(PREMIUM_MONTHLY_PRICE_LABEL).toBe("29 lei");
   });
 });

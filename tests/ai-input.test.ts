@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { invokeTutorWithFallback, isImageGenerationRequest, modelFor, parseTutorResponse, shouldOmitGeometryDiagram, tutorChatInputSchema } from "../server/ai";
+import { invokeTutorWithFallback, isImageGenerationRequest, modelFor, parseTutorResponse, shouldOmitGeometryDiagram, tutorChatInputSchema, tutorModeInstruction } from "../server/ai";
 import { buildQuickActionQuestion, buildTutorPrompt, googleImagesSearchUrl } from "../services/ai-service";
 import { parseAdditionalTopics } from "../services/tutor-onboarding";
 
@@ -39,6 +39,12 @@ describe("tutor quick actions", () => {
   it("preserves typed input when applying a quick action", () => {
     expect(buildQuickActionQuestion("hint", "Problema este 2x = 8.")).toBe(
       "Problema este 2x = 8.\n\nDă-mi un indiciu pentru problema trimisă.",
+    );
+  });
+
+  it("requests a complete, concise, step-by-step solution from the direct-answer action", () => {
+    expect(buildQuickActionQuestion("direct", "Rezolvă 2x = 8.")).toBe(
+      "Rezolvă 2x = 8.\n\nDă-mi rezolvarea completă, corectă și concisă, pas cu pas, apoi verifică rezultatul final.",
     );
   });
 
@@ -206,5 +212,14 @@ describe("tutor chat input", () => {
 
     expect(tried).toEqual(["gpt-5-mini", "gpt-5"]);
     expect(result).toEqual({ result: "Răspuns", model: "gpt-5", tier: "medium" });
+  });
+});
+
+describe("direct answer mode", () => {
+  it("treats the full-answer button as an explicit request for a concise, verified step-by-step solution", () => {
+    const instruction = tutorModeInstruction("direct");
+    expect(instruction).toContain("rezolvarea completă, corectă și concisă, pas cu pas");
+    expect(instruction).toContain("rezultatul final verificat");
+    expect(instruction).not.toContain("doar un indiciu");
   });
 });

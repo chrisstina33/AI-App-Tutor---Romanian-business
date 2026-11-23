@@ -23,7 +23,7 @@ import {
   SurfaceCard,
 } from "@/components/bionis-ui";
 import { useColors } from "@/hooks/use-colors";
-import { SUBJECTS } from "@/lib/app-data";
+import { PARTNERSHIPS_EMAIL, SUBJECTS } from "@/lib/app-data";
 import { ro } from "@/lib/i18n";
 import type { Preferences } from "@/lib/storage";
 import { ACCENT_COLORS, useThemeContext } from "@/lib/theme-provider";
@@ -134,7 +134,7 @@ export default function ProfileScreen() {
     updatePreferences({ preferredSubjects: next });
   }
   async function sendPartnershipRequest() {
-    const contactAddress = process.env.EXPO_PUBLIC_PARTNERSHIPS_EMAIL;
+    const contactAddress = PARTNERSHIPS_EMAIL;
     if (!schoolName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(schoolEmail.trim())) {
       const message = "Completează numele instituției și o adresă de e-mail validă.";
       setPartnershipNotice(message);
@@ -731,12 +731,12 @@ export default function ProfileScreen() {
               <TextInput accessibilityLabel="Numele școlii sau centrului" value={schoolName} onChangeText={setSchoolName} placeholder="Școală / centru educațional" placeholderTextColor={colors.muted} style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border, marginTop: 10 }]} />
               <TextInput accessibilityLabel="E-mail de contact" value={schoolEmail} onChangeText={setSchoolEmail} placeholder="E-mail de contact" placeholderTextColor={colors.muted} keyboardType="email-address" autoCapitalize="none" style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border }]} />
               <TextInput accessibilityLabel="Detalii despre colaborare" value={schoolNotes} onChangeText={setSchoolNotes} placeholder="Tipul colaborării (opțional)" placeholderTextColor={colors.muted} multiline style={[styles.nameInput, styles.partnershipNotes, { color: colors.foreground, borderColor: colors.border }]} />
-              {!process.env.EXPO_PUBLIC_PARTNERSHIPS_EMAIL ? (
-                <Text style={[styles.premiumDetailText, { color: colors.warning }]}>Trimiterea necesită configurarea adresei publice EXPO_PUBLIC_PARTNERSHIPS_EMAIL.</Text>
-              ) : null}
+              <Text style={[styles.premiumDetailText, { color: colors.muted }]}>
+                Se va deschide un e-mail precompletat către {PARTNERSHIPS_EMAIL}. Apasă „Trimite” în aplicația ta de e-mail pentru a transmite solicitarea.
+              </Text>
               {partnershipNotice ? <Text accessibilityRole="alert" style={[styles.premiumDetailText, { color: colors.error }]}>{partnershipNotice}</Text> : null}
               <Pressable accessibilityRole="button" onPress={() => void sendPartnershipRequest()} style={[styles.partnershipSend, { backgroundColor: colors.primary }]}>
-                <Text style={styles.partnershipSendText}>Pregătește solicitarea prin e-mail</Text>
+                <Text style={styles.partnershipSendText}>Deschide e-mailul precompletat</Text>
               </Pressable>
             </ScrollView>
           </View>

@@ -32,6 +32,7 @@ export function buildQuickActionQuestion(
     example: "Arată-mi un exemplu asemănător, dar oprește-te înainte de rezultat.",
     practice: "Dă-mi un exercițiu asemănător pe care să îl încerc singur.",
     summary: "Fă o recapitulare și pune-mi un mini-quiz.",
+    direct: "Dă-mi rezolvarea completă, corectă și concisă, pas cu pas, apoi verifică rezultatul final.",
   };
   const prompt = prompts[action] ?? "Ajută-mă cu următorul pas.";
   return question ? `${question}\n\n${prompt}` : prompt;

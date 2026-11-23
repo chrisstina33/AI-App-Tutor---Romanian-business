@@ -7,6 +7,12 @@ import { publicProcedure, router } from "./_core/trpc";
 import { normalizeTutorResponseText, normalizeTutorTitle } from "../shared/tutor-text";
 
 const tutorModes = ["guided", "hint", "concept", "example", "check", "practice", "summary", "direct"] as const;
+export function tutorModeInstruction(mode: (typeof tutorModes)[number]): string {
+  if (mode === "direct") {
+    return "Elevul a selectat explicit „Răspuns complet”. Oferă rezolvarea completă, corectă și concisă, pas cu pas, cu explicația necesară pentru fiecare pas și rezultatul final verificat. Nu te opri la un indiciu, nu cere elevului să continue singur și nu adăuga pași sau detalii inutile. Dacă enunțul nu conține informațiile esențiale, spune clar ce lipsește și întreabă doar acel lucru.";
+  }
+  return "";
+}
 const tutorAnalysisSchema = z.object({
   subject: z.enum(["Matematică", "Fizică", "Chimie", "Limba română", "Biologie", "Informatică", "Istorie", "Geografie", "Limba engleză", "necunoscut"]),
   schoolLevel: z.enum(["gimnaziu", "liceu", "olimpiada", "necunoscut"]),
@@ -258,6 +264,10 @@ export const assistantRouter = router({
         model,
         messages: [
           { role: "system", content: `${systemPrompt}\n\nGenerează diagramă numai dacă întrebarea curentă o cere explicit; în explicația vizuală poate fi utilă doar dacă e exactă, simplă și potrivită clasei. La întrebările despre formule geometrice, nu inventa puncte sau etichete de figură în text și setează diagram=null dacă elevul nu cere explicit desen/diagramă. Folosește doar enunțul curent; nu copia diagrame anterioare. Dacă nu poți valida desenul sau nivelul de detaliu îl face confuz, setează diagram=null și explică printr-un singur pas de text. Pentru vectori folosește săgeți orientate și etichete cerute. În fizică, arată numai elementele și sensurile fizice relevante; nu adăuga calcule în desen. Unghi drept numai pentru 90° explicit. Pentru formule moleculare folosește diagrama chemistry; pentru ecuații stoechiometrice folosește reaction și verifică atomii.\n\nClasa declarată: „${input.schoolGrade ?? "Nu o precizez"}”. Nivel de experiență: „${input.learnerLevel ?? "Îmi formez încrederea"}”. Stil preferat: „${input.explanationStyle ?? "Scurt și clar"}”. Dacă elevul a precizat clasa, adaptează notația, vocabularul și complexitatea desenului la ea; nu introduce conținut din clase superioare decât dacă este cerut. Dacă materia aleasă nu corespunde cerinței, identific-o doar când ești sigur; altfel întreabă.` },
+          ...(input.mode === "direct" ? [{
+            role: "system" as const,
+            content: tutorModeInstruction(input.mode),
+          }] : []),
           ...(visualMode ? [{
             role: "system" as const,
             content: "Modul de explicație vizuală este activ. Preferă explicații scurte cu structură vizuală clară; nu genera automat o diagramă. Adaugă cel mult un desen numai dacă cererea îl solicită sau dacă este esențial și îl poți reda exact, corect și potrivit clasei. Dacă există risc de ambiguitate, nu desena și explică un singur pas în text.",

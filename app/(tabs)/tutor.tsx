@@ -386,8 +386,19 @@ export default function TutorScreen() {
   }
   function handleQuickAction(action: TutorMode) {
     if (pending) return;
+    const latestUserMessage = [...messages]
+      .reverse()
+      .find((message) => message.role === "user")?.text ?? "";
+    const draft = action === "direct" && !input.trim()
+      ? latestUserMessage
+      : input;
+    if (action === "direct" && !draft.trim() && !uploads.length) {
+      setMode(action);
+      setNotice("Scrie enunțul problemei sau atașează tema, apoi cere răspunsul complet.");
+      return;
+    }
     setMode(action);
-    const question = buildQuickActionQuestion(action, input, uploads.length > 0);
+    const question = buildQuickActionQuestion(action, draft, uploads.length > 0);
     if (!question) {
       setNotice("Scrie pasul în casetă sau atașează o fotografie a exercițiului, apoi apasă din nou «Verifică pasul meu».");
       return;
@@ -1052,9 +1063,7 @@ export default function TutorScreen() {
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              onPress={() =>
-                setMode((value) => (value === "direct" ? "guided" : "direct"))
-              }
+              onPress={() => mode === "direct" ? setMode("guided") : handleQuickAction("direct")}
               style={[styles.footerAction, { borderColor: colors.border }]}
             >
               <Text style={[styles.modeToggle, { color: colors.primary }]}>

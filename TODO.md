@@ -20,7 +20,7 @@
 
 - [ ] Provide chat history/session context, a conversation area, message input, send action, subject selector, tutor/agent selector, homework upload, and the actions Give me a hint, Explain the concept, Show an example, Check my answer, Generate practice questions, and Summarize this lesson.
 - [ ] In guided mode identify subject/concepts, explain what the problem asks, highlight keywords/formulas/theories, provide an initial hint, guide manageable steps, ask for the next attempt, explain mistakes constructively, and reveal a complete solution only when requested or pedagogically appropriate.
-- [ ] Add an explicit direct-answer mode rather than revealing complete solutions by default.
+- [x] Add an explicit direct-answer mode that returns a concise, complete solution only on request.
 - [ ] Render tutor responses as structured message cards with headings, bullets, numbered steps, key concepts, examples, practice exercises, and expandable detail where useful.
 - [ ] Show a clear live-provider/demo-mode status and never claim a file or answer was analyzed when it was not.
 
@@ -61,4 +61,4 @@
 - [x] Conturile elev/părinte, codul de asociere temporar și progresul sincronizat au endpointuri și ecrane. Migrarea DB trebuie aplicată în mediul de lansare.
 - [ ] Mută tokenul sesiunii din AsyncStorage în SecureStore și adaugă verificarea adresei și recuperarea contului.
 - [x] Generează schițe SVG pentru subiecte de geometrie, funcții, mecanică și legături moleculare și include-le în PDF.
-- [ ] Checkout-ul pentru planul propus 9–19 lei în prima săptămână și 49,99 lei/lună nu este încă activat.
+- [ ] Checkout-ul pentru planul propus 9–19 lei în prima săptămână și 29 lei/lună nu este încă activat.

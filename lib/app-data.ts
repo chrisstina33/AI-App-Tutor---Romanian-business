@@ -1,5 +1,9 @@
 export type Subject = { id: string; label: string; shortLabel: string; icon: string; tint: string; description: string };
 
+const configuredPartnershipsEmail = process.env.EXPO_PUBLIC_PARTNERSHIPS_EMAIL;
+export const PARTNERSHIPS_EMAIL =
+  configuredPartnershipsEmail?.trim() || "cristianaghinea33@gmail.com";
+
 export const SUBJECTS: Subject[] = [
   { id: "math", label: "Matematică", shortLabel: "Mate", icon: "calculate", tint: "#8A72FF", description: "Ecuații, funcții și demonstrații" },
   { id: "physics", label: "Fizică", shortLabel: "Fizică", icon: "speed", tint: "#35B99B", description: "Forțe, energie și mișcare" },
