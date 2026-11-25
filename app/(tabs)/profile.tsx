@@ -83,6 +83,10 @@ export default function ProfileScreen() {
   }
   async function submitAccount() {
     showAccountNotice("");
+    if (authMode === "signup" && accountPassword.length < 10) {
+      showAccountNotice("Parola trebuie să conțină cel puțin 10 caractere.", true);
+      return;
+    }
     try {
       const response = authMode === "signup"
         ? await signUpMutation.mutateAsync({ name: accountName || (accountType === "educator" ? "Reprezentant" : preferences.displayName), email: accountEmail, password: accountPassword, accountType })
