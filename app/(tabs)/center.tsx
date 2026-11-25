@@ -19,7 +19,7 @@ import { Badge, ScreenHeader, SectionHeading, SurfaceCard } from "@/components/b
 import { useColors } from "@/hooks/use-colors";
 import { useAuth } from "@/lib/auth-context";
 import { trpc } from "@/lib/trpc";
-import { SUBJECTS } from "@/lib/app-data";
+import { PARTNERSHIPS_EMAIL, SUBJECTS } from "@/lib/app-data";
 
 const ACCEPTED_TYPES = ["application/pdf", "text/plain", "image/png", "image/jpeg"];
 const MAX_FILE_SIZE = 8 * 1024 * 1024;
@@ -89,8 +89,10 @@ export default function CenterScreen() {
   const reviewJoinMutation = trpc.education.reviewStudentJoinRequest.useMutation();
   const downloadMutation = trpc.education.downloadMaterial.useMutation();
   const [centerName, setCenterName] = useState("");
+  const [applicantName, setApplicantName] = useState("");
   const [contactEmail, setContactEmail] = useState(user?.email ?? "");
   const [applicationDetails, setApplicationDetails] = useState("");
+  const [showPublicApplication, setShowPublicApplication] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [centerSearch, setCenterSearch] = useState("");
   const [selectedFile, setSelectedFile] = useState<SelectedMaterial | null>(null);
@@ -99,6 +101,7 @@ export default function CenterScreen() {
   const [accessCode, setAccessCode] = useState("");
   const [notice, setNotice] = useState("");
   const [errorNotice, setErrorNotice] = useState(false);
+  const validContactEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim());
 
   function showNotice(message: string, isError = false) {
     setNotice(message);
@@ -117,6 +120,26 @@ export default function CenterScreen() {
       showNotice("Cererea a fost trimisă. Spațiul se activează după aprobarea echipei.");
     } catch (error) {
       showNotice(error instanceof Error ? error.message : "Cererea nu a putut fi trimisă.", true);
+    }
+  }
+
+  async function emailPublicApplication() {
+    showNotice("");
+    const subject = `Solicitare colaborare - ${centerName.trim()}`;
+    const body = [
+      "Solicitare de colaborare pentru un centru educațional",
+      `Centru: ${centerName.trim()}`,
+      `Persoană de contact: ${applicantName.trim()}`,
+      `E-mail: ${contactEmail.trim()}`,
+      `Detalii: ${applicationDetails.trim() || "Nespecificate"}`,
+    ].join("\n");
+    try {
+      await Linking.openURL(
+        `mailto:${PARTNERSHIPS_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
+      );
+      showNotice("E-mailul cu solicitarea este pregătit, dar nu a fost trimis încă. Trimite-l din aplicația de e-mail.");
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Aplicația de e-mail nu a putut fi deschisă.", true);
     }
   }
 
@@ -263,12 +286,43 @@ export default function CenterScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <ScreenHeader eyebrow="ÎNVĂȚARE ÎN COMUNITATE" title="Spațiul centrului" />
         {!user ? (
-          <SurfaceCard style={styles.card}>
-            <MaterialIcons name="school" size={30} color={colors.primary} />
-            <Text style={[styles.title, { color: colors.foreground }]}>Un spațiu pentru echipa ta</Text>
-            <Text style={[styles.body, { color: colors.muted }]}>Creează un cont de reprezentant pentru a solicita accesul centrului. Cererile sunt verificate înainte ca materialele și elevii să fie conectați.</Text>
-            <ActionButton label="Creează cont de centru" onPress={openAccountCreation} />
-          </SurfaceCard>
+          <>
+            <SurfaceCard style={styles.card}>
+              <MaterialIcons name="school" size={30} color={colors.primary} />
+              <Text style={[styles.title, { color: colors.foreground }]}>Un spațiu pentru echipa ta</Text>
+              <Text style={[styles.body, { color: colors.muted }]}>Creează un cont de reprezentant pentru a solicita accesul centrului. Cererile sunt verificate înainte ca materialele și elevii să fie conectați.</Text>
+              <ActionButton label="Creează cont de centru" onPress={openAccountCreation} />
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setShowPublicApplication((value) => !value)}
+                style={[styles.fileButton, { borderColor: colors.border }]}
+              >
+                <Text style={[styles.actionText, { color: colors.primary }]}>
+                  {showPublicApplication ? "Ascunde solicitarea fără cont" : "Solicită colaborarea fără cont"}
+                </Text>
+              </Pressable>
+            </SurfaceCard>
+            {showPublicApplication ? (
+              <SurfaceCard style={styles.card}>
+                <Text style={[styles.title, { color: colors.foreground }]}>Solicitare pentru un centru</Text>
+                <Text style={[styles.body, { color: colors.muted }]}>
+                  Completează datele, apoi trimite solicitarea prin aplicația ta de e-mail.
+                </Text>
+                <TextInput value={centerName} onChangeText={setCenterName} placeholder="Numele școlii sau centrului" placeholderTextColor={colors.muted} style={[styles.input, { color: colors.foreground, borderColor: colors.border }]} />
+                <TextInput value={applicantName} onChangeText={setApplicantName} placeholder="Numele persoanei de contact" placeholderTextColor={colors.muted} autoComplete="name" style={[styles.input, { color: colors.foreground, borderColor: colors.border }]} />
+                <TextInput value={contactEmail} onChangeText={setContactEmail} placeholder="E-mail de contact" placeholderTextColor={colors.muted} keyboardType="email-address" autoCapitalize="none" autoComplete="email" style={[styles.input, { color: colors.foreground, borderColor: colors.border }]} />
+                {contactEmail.trim() && !validContactEmail ? (
+                  <Text style={[styles.caption, { color: colors.error }]}>Introdu o adresă de e-mail validă.</Text>
+                ) : null}
+                <TextInput value={applicationDetails} onChangeText={setApplicationDetails} placeholder="Detalii despre colaborare (opțional)" placeholderTextColor={colors.muted} multiline style={[styles.input, styles.multiline, { color: colors.foreground, borderColor: colors.border }]} />
+                <ActionButton
+                  label="Pregătește solicitarea"
+                  disabled={centerName.trim().length < 2 || !applicantName.trim() || !validContactEmail}
+                  onPress={() => void emailPublicApplication()}
+                />
+              </SurfaceCard>
+            ) : null}
+          </>
         ) : user.accountType === "educator" ? (
           workspace.isLoading ? <ActivityIndicator color={colors.primary} /> : workspace.isError ? (
             <SurfaceCard style={styles.card}>

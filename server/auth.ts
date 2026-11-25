@@ -74,7 +74,7 @@ export const authRouter = router({
     let userId: number;
     try {
       const existing = await db.select({ userId: authAccounts.userId }).from(authAccounts).where(eq(authAccounts.email, email)).limit(1);
-      if (existing.length) throw new TRPCError({ code: "CONFLICT", message: "Există deja un cont cu această adresă de e-mail." });
+      if (existing.length) throw new TRPCError({ code: "CONFLICT", message: "Există deja un cont cu această adresă de e-mail. Folosește «Autentificare» pentru a intra în cont de pe acest telefon." });
       userId = await db.transaction(async (tx) => {
         await tx.insert(users).values({ openId, name: input.name, email, loginMethod: "password" });
         const accountUser = await tx.select({ id: users.id }).from(users).where(eq(users.openId, openId)).limit(1);
@@ -85,7 +85,7 @@ export const authRouter = router({
         return createdUserId;
       });
     } catch (error) {
-      if (isDuplicateKeyError(error)) throw new TRPCError({ code: "CONFLICT", message: "Există deja un cont cu această adresă de e-mail." });
+      if (isDuplicateKeyError(error)) throw new TRPCError({ code: "CONFLICT", message: "Există deja un cont cu această adresă de e-mail. Folosește «Autentificare» pentru a intra în cont de pe acest telefon." });
       if (error instanceof TRPCError) throw error;
       authDatabaseUnavailable("Sign-up", error);
     }

@@ -20,7 +20,7 @@ Acest document separă funcțiile pe care echipa le poate demonstra acum de cele
 |---|---|---|
 | Cont elev | Autentificarea și sincronizarea sunt implementate; așteaptă migrarea DB și testarea pe Render. Tokenul client este încă în AsyncStorage. | Migrare DB, SecureStore pe mobil, verificare e-mail și recuperare parolă. |
 | Cont părinte și monitorizare | Asociere cu cod temporar, folosit o singură dată; părintele se poate înregistra din Progres și vede întrebările și lecțiile elevului asociat. Necesită migrarea DB. | Migrare DB și verificarea consimțământului/fluxului pentru minori înainte de pilot. |
-| Spațiu pentru centru | Cerere cu aprobare administrativă, încărcare de materiale, cod pentru elevi și acces privat la fișiere. Necesită migrarea DB, cont admin și Forge Storage configurat. | Aplicați migrarea `0004_education_spaces.sql`, verificați upload/download și procesați cererile cu un administrator. |
+| Spațiu pentru centru | Cerere cu aprobare administrativă, încărcare de materiale, cod pentru elevi și acces privat la fișiere. Necesită migrarea DB, cont admin și Forge Storage configurat. | Aplicați migrațiile `0004_education_spaces.sql` și `0005_center_join_requests.sql`, verificați upload/download și procesați cererile cu un administrator. |
 | Abonament | Profilul prezintă doar o ofertă propusă. Checkout-ul nu este activ. | Preț și termeni finali, billing pentru platformele selectate, verificare server-side, restaurare și anulare. |
 | Analiză temă din poză/PDF | Atașamentele sunt trimise către modelul configurat; imagini folosesc vision, PDF folosește file input. TXT este decodat în server. | Verificare pe model/backend-ul de producție și controale suplimentare pentru fișiere malițioase. |
 | Intrare vocală | Înregistrarea se trimite la transcriere și textul se poate edita înainte de trimitere. | Configurarea Forge STT pe server și verificarea formatelor iOS/Android/Web. |
@@ -30,7 +30,7 @@ Acest document separă funcțiile pe care echipa le poate demonstra acum de cele
 
 ## Recomandarea de lansare
 
-Înainte de pilot, aplicați migrațiile până la `0004_education_spaces.sql`, configurați baza de date, Forge Storage, modelele vision și Forge STT pe server și validați toate fluxurile pe aplicațiile/platformele țintă. Premium rămâne informativ până când sunt alese platforma de publicare, prețul final și integrarea de plată; în buildul curent nicio plată nu este colectată.
+Înainte de pilot, aplicați migrațiile până la `0005_center_join_requests.sql`, configurați baza de date, Forge Storage, modelele vision și Forge STT pe server și validați toate fluxurile pe aplicațiile/platformele țintă. Premium rămâne informativ până când sunt alese platforma de publicare, prețul final și integrarea de plată; în buildul curent nicio plată nu este colectată.
 
 ## Ordine tehnică sugerată
 

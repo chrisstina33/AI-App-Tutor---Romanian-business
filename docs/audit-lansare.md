@@ -3,6 +3,8 @@
 Data auditului: 27 octombrie 2026  
 Sursă analizată: versiunea din `bionis (2).zip`, împreună cu `README.md`, `TODO.md`, `plan.md`, `Research sources — Romanian guided homework MVP.md` și `cost-calculator.mjs`.
 
+> Document istoric pentru arhiva menționată mai sus; nu descrie starea curentă a codului. Pentru funcțiile actuale, folosiți [starea funcțională](./functional-status.md) și [README](../README.md).
+
 ## Verdict
 
 Proiectul este un prototip MVP coerent, cu o direcție vizuală și pedagogică recognoscibilă. Nu este încă pregătit pentru lansare comercială. Interfața și demonstrațiile funcționează pentru explorare, însă plata, analiza temelor încărcate, istoricul sincronizat și o parte din fluxurile companionului web nu sunt servicii reale. Etichetele și paginile produsului trebuie să păstreze aceste distincții până la integrarea backend-ului.
