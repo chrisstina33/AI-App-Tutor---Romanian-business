@@ -10,7 +10,8 @@ Acest document separă funcțiile pe care echipa le poate demonstra acum de cele
 - Exportul conversației/recapitulării ca PDF este implementat. Pe Web se deschide printarea browserului; pe mobil se folosește print și share Expo.
 - Imaginile/PDF-urile sunt trimise la modelul multimodal configurat, iar TXT este inclus în mesaj; analiza cere un model cu suport pentru acel format. Vocea este transcrisă de endpointul configurat și apare în casetă pentru verificare.
 - Diagramele sunt interpretate ca JSON structurat validat, apoi randate determinist în SVG: geometria folosește puncte și relații, iar chimia folosește grafuri moleculare cu valență verificată. Sunt afișate în chat și exportate în PDF; structurile ambigue sunt omise.
-- Înregistrare și autentificare cu e-mail/parolă, sesiune pe 30 de zile, cod de asociere părinte-elev cu expirare și vedere de progres a părintelui sunt implementate pe server.
+- Înregistrare și autentificare cu e-mail/parolă, sesiune pe 30 de zile, cod de asociere părinte-elev cu expirare și vedere de progres a părintelui sunt implementate pe server. Din Progres, elevul poate crea codul, iar părintele se poate înregistra și asocia direct.
+- Cererile centrelor sunt stocate în aplicație și pot fi aprobate/respinse de un administrator. Centrele aprobate au spațiu privat pentru materiale și elevi; înscrierea elevilor folosește un cod temporar, iar descărcările verifică apartenența la centru.
 - Tema luminoasă/întunecată și tokenurile de culoare există; nu există încă editor de paletă sau audit automat de contrast pentru toate stările.
 
 ## Nu este încă funcțional pentru elevi reali
@@ -18,7 +19,8 @@ Acest document separă funcțiile pe care echipa le poate demonstra acum de cele
 | Cerință | Stare | Ce trebuie conectat |
 |---|---|---|
 | Cont elev | Autentificarea și sincronizarea sunt implementate; așteaptă migrarea DB și testarea pe Render. Tokenul client este încă în AsyncStorage. | Migrare DB, SecureStore pe mobil, verificare e-mail și recuperare parolă. |
-| Cont părinte și monitorizare | Asociere cu cod temporar, folosit o singură dată; dashboardul arată întrebări și lecții agregate. Necesită migrarea DB. | Migrare DB și verificarea consimțământului/fluxului pentru minori înainte de pilot. |
+| Cont părinte și monitorizare | Asociere cu cod temporar, folosit o singură dată; părintele se poate înregistra din Progres și vede întrebările și lecțiile elevului asociat. Necesită migrarea DB. | Migrare DB și verificarea consimțământului/fluxului pentru minori înainte de pilot. |
+| Spațiu pentru centru | Cerere cu aprobare administrativă, încărcare de materiale, cod pentru elevi și acces privat la fișiere. Necesită migrarea DB, cont admin și Forge Storage configurat. | Aplicați migrarea `0004_education_spaces.sql`, verificați upload/download și procesați cererile cu un administrator. |
 | Abonament | Profilul prezintă doar o ofertă propusă. Checkout-ul nu este activ. | Preț și termeni finali, billing pentru platformele selectate, verificare server-side, restaurare și anulare. |
 | Analiză temă din poză/PDF | Atașamentele sunt trimise către modelul configurat; imagini folosesc vision, PDF folosește file input. TXT este decodat în server. | Verificare pe model/backend-ul de producție și controale suplimentare pentru fișiere malițioase. |
 | Intrare vocală | Înregistrarea se trimite la transcriere și textul se poate edita înainte de trimitere. | Configurarea Forge STT pe server și verificarea formatelor iOS/Android/Web. |
@@ -28,7 +30,7 @@ Acest document separă funcțiile pe care echipa le poate demonstra acum de cele
 
 ## Recomandarea de lansare
 
-Înainte de pilot, aplicați migrarea `0002_auth_parent_accounts.sql`, configurați baza de date, modelele vision și Forge STT pe server și validați toate fluxurile pe aplicațiile/platformele țintă. Premium rămâne informativ până când sunt alese platforma de publicare, prețul final și integrarea de plată; în buildul curent nicio plată nu este colectată.
+Înainte de pilot, aplicați migrațiile până la `0004_education_spaces.sql`, configurați baza de date, Forge Storage, modelele vision și Forge STT pe server și validați toate fluxurile pe aplicațiile/platformele țintă. Premium rămâne informativ până când sunt alese platforma de publicare, prețul final și integrarea de plată; în buildul curent nicio plată nu este colectată.
 
 ## Ordine tehnică sugerată
 

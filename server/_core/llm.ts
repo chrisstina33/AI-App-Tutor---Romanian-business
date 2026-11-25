@@ -273,8 +273,16 @@ const normalizeResponseFormat = ({
 const RETRY_MAX_RETRIES = 4;
 const RETRY_BASE_DELAY_MS = 500;
 const RETRY_MAX_DELAY_MS = 30_000;
+const REQUEST_TIMEOUT_MS = 45_000;
 
 type FetchInit = NonNullable<Parameters<typeof fetch>[1]>;
+
+export class LLMRequestTimeoutError extends Error {
+  constructor() {
+    super(`LLM request timed out after ${REQUEST_TIMEOUT_MS / 1000} seconds`);
+    this.name = "LLMRequestTimeoutError";
+  }
+}
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -295,6 +303,25 @@ const computeBackoffDelay = (attempt: number, retryAfterMs?: number): number => 
   return Math.min(Math.max(jittered, retryAfterMs ?? 0), RETRY_MAX_DELAY_MS);
 };
 
+const fetchWithTimeout = async (url: string, init: FetchInit): Promise<Response> => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    const body = await response.arrayBuffer();
+    return new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+  } catch (error) {
+    if (controller.signal.aborted) throw new LLMRequestTimeoutError();
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
 // Retry only transient HTTP failures and network errors; other 4xx responses are
 // deterministic request errors and should be returned immediately.
 const fetchWithBackoff = async (
@@ -306,7 +333,7 @@ const fetchWithBackoff = async (
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const response = await fetch(url, init);
+      const response = await fetchWithTimeout(url, init);
       const retryableStatus = response.status === 408 || response.status === 429 || response.status >= 500;
       if (response.ok || !retryableStatus || attempt === maxRetries) {
         return response;
@@ -321,6 +348,7 @@ const fetchWithBackoff = async (
       console.warn("LLM request retry scheduled after HTTP failure");
       await sleep(computeBackoffDelay(attempt, retryAfterMs));
     } catch (error) {
+      if (error instanceof LLMRequestTimeoutError) throw error;
       lastError = error;
       if (attempt === maxRetries) throw error;
       console.warn("LLM request retry scheduled after network failure");
@@ -356,6 +384,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
 
   const payload: Record<string, unknown> = {
     messages: messages.map(normalizeMessage),
+    provider: { sort: "latency" },
   };
 
   if (model) {

@@ -1,10 +1,9 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, type Href } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
   Linking,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -23,7 +22,7 @@ import {
   SurfaceCard,
 } from "@/components/bionis-ui";
 import { useColors } from "@/hooks/use-colors";
-import { PARTNERSHIPS_EMAIL, SUBJECTS } from "@/lib/app-data";
+import { SUBJECTS } from "@/lib/app-data";
 import { ro } from "@/lib/i18n";
 import type { Preferences } from "@/lib/storage";
 import { ACCENT_COLORS, useThemeContext } from "@/lib/theme-provider";
@@ -34,15 +33,25 @@ import { PREMIUM_MONTHLY_PRICE_LABEL } from "@/shared/billing";
 
 export default function ProfileScreen() {
   const colors = useColors();
-  const routeParams = useLocalSearchParams<{ billing?: string }>();
+  const routeParams = useLocalSearchParams<{ billing?: string; accountType?: string; authMode?: string }>();
   const { colorScheme, setColorScheme, accent, setAccent } = useThemeContext();
   const { state: learnerState, updatePreferences: saveLearnerPreferences } = useLearnerData();
   const { user, beginSession, endSession } = useAuth();
   const preferences = learnerState.preferences;
   const [saved, setSaved] = useState(false);
   const [voice, setVoice] = useState(false);
-  const [accountType, setAccountType] = useState<"student" | "parent">("student");
-  const [authMode, setAuthMode] = useState<"signup" | "signin">("signup");
+  const [selectedAccountType, setAccountType] = useState<"student" | "parent" | "educator">(
+    routeParams.accountType === "parent" || routeParams.accountType === "educator"
+      ? routeParams.accountType
+      : "student",
+  );
+  const [selectedAuthMode, setAuthMode] = useState<"signup" | "signin">("signup");
+  const accountType = routeParams.accountType === "parent" || routeParams.accountType === "educator"
+    ? routeParams.accountType
+    : selectedAccountType;
+  const authMode = routeParams.authMode === "signin" || routeParams.authMode === "signup"
+    ? routeParams.authMode
+    : selectedAuthMode;
   const [accountName, setAccountName] = useState("");
   const [accountEmail, setAccountEmail] = useState("");
   const [accountPassword, setAccountPassword] = useState("");
@@ -53,17 +62,14 @@ export default function ProfileScreen() {
   const [avatarNotice, setAvatarNotice] = useState(false);
   const [premiumDetails, setPremiumDetails] = useState(false);
   const [billingNotice, setBillingNotice] = useState("");
-  const [showPartnership, setShowPartnership] = useState(false);
-  const [schoolName, setSchoolName] = useState("");
-  const [schoolEmail, setSchoolEmail] = useState("");
-  const [schoolNotes, setSchoolNotes] = useState("");
-  const [partnershipNotice, setPartnershipNotice] = useState("");
   const signUpMutation = trpc.auth.signUp.useMutation();
   const signInMutation = trpc.auth.signIn.useMutation();
   const signOutMutation = trpc.auth.signOut.useMutation();
   const inviteMutation = trpc.auth.createParentInvite.useMutation();
   const linkMutation = trpc.auth.linkStudent.useMutation();
   const parentOverview = trpc.auth.parentOverview.useQuery(undefined, { enabled: user?.accountType === "parent", retry: false, refetchInterval: 30_000 });
+  const centerApplications = trpc.education.pendingApplications.useQuery(undefined, { enabled: user?.role === "admin", retry: false });
+  const reviewApplicationMutation = trpc.education.reviewApplication.useMutation();
   const billingStatus = trpc.billing.status.useQuery(undefined, {
     enabled: Boolean(user),
     retry: false,
@@ -79,12 +85,26 @@ export default function ProfileScreen() {
     showAccountNotice("");
     try {
       const response = authMode === "signup"
-        ? await signUpMutation.mutateAsync({ name: accountName || preferences.displayName, email: accountEmail, password: accountPassword, accountType })
+        ? await signUpMutation.mutateAsync({ name: accountName || (accountType === "educator" ? "Reprezentant" : preferences.displayName), email: accountEmail, password: accountPassword, accountType })
         : await signInMutation.mutateAsync({ email: accountEmail, password: accountPassword });
       await beginSession(response.session.token, response.user);
       if (response.user.accountType === "student" && authMode === "signup") updatePreferences({ displayName: response.user.name });
-      showAccountNotice("Contul este activ. Progresul elevului se sincronizează cu serverul.");
       setAccountPassword("");
+      if (response.user.accountType === "parent" && authMode === "signup" && inviteCode.trim()) {
+        try {
+          await linkMutation.mutateAsync({ code: inviteCode.trim() });
+          setInviteCode("");
+          showAccountNotice("Contul de părinte este activ, iar elevul a fost asociat.");
+          await parentOverview.refetch();
+          return;
+        } catch (error) {
+          showAccountNotice(`Contul a fost creat, dar codul nu s-a putut asocia: ${error instanceof Error ? error.message : "încearcă din nou din spațiul părintelui."}`, true);
+          return;
+        }
+      }
+      showAccountNotice(response.user.accountType === "educator"
+        ? "Contul de reprezentant este activ. Deschide fila Centru pentru a trimite cererea de acces."
+        : "Contul este activ. Progresul elevului se sincronizează cu serverul.");
     } catch (error) { showAccountNotice(error instanceof Error ? error.message : "Autentificarea nu a reușit.", true); }
   }
   async function createInvite() {
@@ -94,6 +114,15 @@ export default function ProfileScreen() {
   async function connectStudent() {
     try { await linkMutation.mutateAsync({ code: inviteCode }); setInviteCode(""); await parentOverview.refetch(); showAccountNotice("Contul elevului a fost asociat."); }
     catch (error) { showAccountNotice(error instanceof Error ? error.message : "Asocierea nu a reușit.", true); }
+  }
+  async function reviewCenterApplication(centerId: number, decision: "approved" | "rejected") {
+    try {
+      await reviewApplicationMutation.mutateAsync({ centerId, decision });
+      await centerApplications.refetch();
+      showAccountNotice(decision === "approved" ? "Centrul a fost aprobat și spațiul este activ." : "Cererea centrului a fost respinsă.");
+    } catch (error) {
+      showAccountNotice(error instanceof Error ? error.message : "Cererea nu a putut fi actualizată.", true);
+    }
   }
   async function startCheckout() {
     try {
@@ -133,41 +162,6 @@ export default function ProfileScreen() {
       : [...preferences.preferredSubjects, id];
     updatePreferences({ preferredSubjects: next });
   }
-  async function sendPartnershipRequest() {
-    const contactAddress = PARTNERSHIPS_EMAIL;
-    if (!schoolName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(schoolEmail.trim())) {
-      const message = "Completează numele instituției și o adresă de e-mail validă.";
-      setPartnershipNotice(message);
-      setAccountNotice(message);
-      setAccountNoticeIsError(true);
-      return;
-    }
-    if (!contactAddress || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactAddress)) {
-      const message = "Formularul nu poate trimite solicitarea: configurează EXPO_PUBLIC_PARTNERSHIPS_EMAIL cu adresa oficială de contact.";
-      setPartnershipNotice(message);
-      setAccountNotice(message);
-      setAccountNoticeIsError(true);
-      return;
-    }
-    const subject = "Solicitare colaborare educațională";
-    const body = [
-      `Instituție: ${schoolName.trim()}`,
-      `E-mail de contact: ${schoolEmail.trim()}`,
-      schoolNotes.trim() ? `Detalii: ${schoolNotes.trim()}` : "",
-    ].filter(Boolean).join("\n");
-    try {
-      await Linking.openURL(`mailto:${contactAddress}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
-      setShowPartnership(false);
-      setPartnershipNotice("");
-      setAccountNotice("Solicitarea a fost pregătită în aplicația de e-mail. Trimite mesajul pentru a o transmite.");
-      setAccountNoticeIsError(false);
-    } catch (error) {
-      const message = error instanceof Error ? `Aplicația de e-mail nu s-a putut deschide: ${error.message}` : "Aplicația de e-mail nu s-a putut deschide.";
-      setPartnershipNotice(message);
-      setAccountNotice(message);
-      setAccountNoticeIsError(true);
-    }
-  }
   return (
     <ScreenContainer safeAreaClassName="px-5">
       <ScrollView
@@ -202,11 +196,35 @@ export default function ProfileScreen() {
               {preferences.displayName || "Elev"}
             </Text>
             <Text style={[styles.profileMeta, { color: colors.muted }]}>
-              {user ? (user.accountType === "student" ? "Profil sincronizat pentru elev" : "Cont de părinte conectat") : "Profil local de învățare"}
+              {user ? (user.accountType === "student" ? "Profil sincronizat pentru elev" : user.accountType === "parent" ? "Cont de părinte conectat" : "Cont de centru conectat") : "Profil local de învățare"}
             </Text>
             <Badge tone={user ? colors.success : colors.warning}>{user ? "Cont conectat" : ro.savedOnDevice}</Badge>
           </View>
         </SurfaceCard>
+        {user?.role === "admin" ? (
+          <>
+            <SectionHeading title="Cereri de acces pentru centre" />
+            <SurfaceCard style={styles.accountCard}>
+              {centerApplications.isLoading ? <ActivityIndicator color={colors.primary} /> : centerApplications.isError ? (
+                <Text accessibilityRole="alert" style={[styles.accountBody, { color: colors.error }]}>Cererile nu au putut fi încărcate.</Text>
+              ) : centerApplications.data?.length ? centerApplications.data.map((application) => (
+                <View key={application.centerId} style={[styles.parentStudent, { borderColor: colors.border }]}>
+                  <Text style={[styles.accountTitle, { color: colors.foreground }]}>{application.name}</Text>
+                  <Text style={[styles.accountBody, { color: colors.muted }]}>{application.applicantName} · {application.contactEmail} · {application.applicantEmail}</Text>
+                  {application.details ? <Text style={[styles.accountBody, { color: colors.muted }]}>{application.details}</Text> : null}
+                  <View style={styles.reviewActions}>
+                    <Pressable disabled={reviewApplicationMutation.isPending} onPress={() => void reviewCenterApplication(application.centerId, "approved")} style={[styles.reviewButton, { backgroundColor: `${colors.success}20` }]}>
+                      <Text style={[styles.premiumActionText, { color: colors.success }]}>Aprobă</Text>
+                    </Pressable>
+                    <Pressable disabled={reviewApplicationMutation.isPending} onPress={() => void reviewCenterApplication(application.centerId, "rejected")} style={[styles.reviewButton, { backgroundColor: `${colors.error}16` }]}>
+                      <Text style={[styles.premiumActionText, { color: colors.error }]}>Respinge</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              )) : <Text style={[styles.accountBody, { color: colors.muted }]}>Nu există cereri în așteptare.</Text>}
+            </SurfaceCard>
+          </>
+        ) : null}
         {avatarNotice ? (
           <SurfaceCard style={styles.noticeCard}>
             <Text style={[styles.noticeText, { color: colors.muted }]}>
@@ -613,6 +631,10 @@ export default function ProfileScreen() {
             <Text style={[styles.premiumDetailText, { color: colors.muted }]}>
               Plata cu cardul este gestionată de părinte. Asociază contul părintelui pentru acces Premium.
             </Text>
+          ) : user?.accountType === "educator" ? (
+            <Text style={[styles.premiumDetailText, { color: colors.muted }]}>
+              Abonamentele pentru centre sunt administrate separat după aprobarea cererii de colaborare.
+            </Text>
           ) : (
             <Text style={[styles.premiumDetailText, { color: colors.muted }]}>
               Creează un cont de părinte și asociază un elev pentru a cumpăra abonamentul.
@@ -655,16 +677,16 @@ export default function ProfileScreen() {
             </View>
           ) : null}
         </SurfaceCard>
-        <SectionHeading title={user?.accountType === "parent" ? "Asociere elev–părinte și progres" : user?.accountType === "student" ? "Legătura cu părintele" : "Cont și asociere elev–părinte"} />
+        <SectionHeading title={user?.accountType === "parent" ? "Asociere elev–părinte și progres" : user?.accountType === "student" ? "Legătura cu părintele" : user?.accountType === "educator" ? "Cont de centru" : "Cont și asociere elev–părinte"} />
         <SurfaceCard style={styles.accountCard}>
           {user ? <>
-            <Text style={[styles.accountTitle, { color: colors.foreground }]}>{user.accountType === "student" ? "Cont de elev" : "Cont de părinte"}</Text>
+            <Text style={[styles.accountTitle, { color: colors.foreground }]}>{user.accountType === "student" ? "Cont de elev" : user.accountType === "parent" ? "Cont de părinte" : "Cont de reprezentant"}</Text>
             <Text style={[styles.accountBody, { color: colors.muted }]}>{user.name} · {user.email}</Text>
             {user.accountType === "student" ? <>
               <Text style={[styles.accountBody, { color: colors.muted, marginTop: 8 }]}>Pași: 1. Părintele își creează un cont de tip „Părinte”. 2. Generezi codul de mai jos, valabil 30 de minute. 3. Părintele intră în Profil → Asociere elev–părinte și introduce codul; apoi poate vedea progresul sincronizat.</Text>
               <Pressable disabled={inviteMutation.isPending} onPress={createInvite} style={[styles.premiumAction, { borderColor: colors.border, marginTop: 12, opacity: inviteMutation.isPending ? 0.6 : 1 }]}><Text style={[styles.premiumActionText, { color: colors.primary }]}>{inviteMutation.isPending ? "Se generează codul…" : "Creează cod pentru părinte"}</Text></Pressable>
               {parentCode ? <Text selectable style={[styles.accountTitle, { color: colors.primary, marginTop: 10, letterSpacing: 2 }]}>{parentCode}</Text> : null}
-            </> : <>
+            </> : user.accountType === "parent" ? <>
               <Text style={[styles.accountBody, { color: colors.muted, marginTop: 8 }]}>Solicită elevului un cod temporar din Profilul său. Introdu codul aici; după asociere, progresul elevului apare în această secțiune.</Text>
               <TextInput value={inviteCode} onChangeText={setInviteCode} placeholder="Cod primit de la elev" placeholderTextColor={colors.muted} autoCapitalize="characters" maxLength={16} style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border, marginTop: 12 }]} />
               <Pressable disabled={linkMutation.isPending || inviteCode.trim().length !== 16} onPress={connectStudent} style={[styles.premiumAction, { borderColor: colors.border, marginTop: 8, opacity: linkMutation.isPending || inviteCode.trim().length !== 16 ? 0.6 : 1 }]}><Text style={[styles.premiumActionText, { color: colors.primary }]}>{linkMutation.isPending ? "Se asociază…" : "Asociază elevul"}</Text></Pressable>
@@ -675,21 +697,25 @@ export default function ProfileScreen() {
                 <Text style={[styles.accountBody, { color: colors.muted }]}>{student.questionsAsked} întrebări · {student.lessons.length} materii/lecții urmărite</Text>
                 {student.lessons.slice(0, 5).map((lesson) => <Text key={lesson.id} style={[styles.accountBody, { color: colors.muted, marginTop: 4 }]}>• {lesson.title} ({lesson.questionCount} întrebări)</Text>)}
               </View>)}
-            </>}
+            </> : <Text style={[styles.accountBody, { color: colors.muted, marginTop: 8 }]}>Gestionează cererea, materialele și elevii din fila Centru.</Text>}
             <Pressable onPress={signOut} style={[styles.premiumAction, { borderColor: colors.border, marginTop: 12 }]}><Text style={[styles.premiumActionText, { color: colors.error }]}>Deconectează-te</Text></Pressable>
           </> : <>
             <Text style={[styles.accountTitle, { color: colors.foreground }]}>{authMode === "signup" ? "Creează un cont" : "Intră în cont"}</Text>
             {authMode === "signup" ? <>
               <Text style={[styles.accountBody, { color: colors.muted, marginTop: 5 }]}>Alege tipul contului</Text>
               <View style={styles.optionWrap}>
-                {([{ id: "student", label: "Elev" }, { id: "parent", label: "Părinte" }] as const).map((item) => <Pressable key={item.id} onPress={() => setAccountType(item.id)} style={[styles.option, { backgroundColor: accountType === item.id ? `${colors.primary}16` : colors.background, borderColor: accountType === item.id ? colors.primary : colors.border }]}><Text style={[styles.optionText, { color: accountType === item.id ? colors.primary : colors.muted }]}>{item.label}</Text></Pressable>)}
+                {([{ id: "student", label: "Elev" }, { id: "parent", label: "Părinte" }, { id: "educator", label: "Centru educațional" }] as const).map((item) => <Pressable key={item.id} onPress={() => { router.setParams({ accountType: undefined }); setAccountType(item.id); }} style={[styles.option, { backgroundColor: accountType === item.id ? `${colors.primary}16` : colors.background, borderColor: accountType === item.id ? colors.primary : colors.border }]}><Text style={[styles.optionText, { color: accountType === item.id ? colors.primary : colors.muted }]}>{item.label}</Text></Pressable>)}
               </View>
               <TextInput value={accountName} onChangeText={setAccountName} placeholder="Nume afișat" placeholderTextColor={colors.muted} autoComplete="name" style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border }]} />
+              {accountType === "parent" ? <>
+                <Text style={[styles.accountBody, { color: colors.muted }]}>Codul de supraveghere este opțional. Îl poți introduce acum sau după crearea contului.</Text>
+                <TextInput value={inviteCode} onChangeText={setInviteCode} placeholder="Cod de supraveghere (opțional)" placeholderTextColor={colors.muted} autoCapitalize="characters" maxLength={16} style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border }]} />
+              </> : null}
             </> : null}
             <TextInput value={accountEmail} onChangeText={setAccountEmail} placeholder="Adresă de e-mail" placeholderTextColor={colors.muted} keyboardType="email-address" autoCapitalize="none" autoComplete="email" style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border, marginTop: 10 }]} />
             <TextInput value={accountPassword} onChangeText={setAccountPassword} placeholder={authMode === "signup" ? "Parolă (minimum 10 caractere)" : "Parolă"} placeholderTextColor={colors.muted} secureTextEntry autoComplete={authMode === "signup" ? "new-password" : "current-password"} style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border, marginTop: 10 }]} />
             <Pressable onPress={submitAccount} disabled={signUpMutation.isPending || signInMutation.isPending} style={[styles.premiumAction, { borderColor: colors.primary, backgroundColor: `${colors.primary}12`, marginTop: 12 }]}><Text style={[styles.premiumActionText, { color: colors.primary }]}>{authMode === "signup" ? "Creează contul" : "Autentificare"}</Text></Pressable>
-            <Pressable onPress={() => setAuthMode((value) => value === "signup" ? "signin" : "signup")} style={{ paddingVertical: 12 }}><Text style={[styles.premiumActionText, { color: colors.primary }]}>{authMode === "signup" ? "Am deja un cont" : "Creează un cont nou"}</Text></Pressable>
+            <Pressable onPress={() => { router.setParams({ authMode: undefined }); setAuthMode((value) => value === "signup" ? "signin" : "signup"); }} style={{ paddingVertical: 12 }}><Text style={[styles.premiumActionText, { color: colors.primary }]}>{authMode === "signup" ? "Am deja un cont" : "Creează un cont nou"}</Text></Pressable>
             <Text style={[styles.accountBody, { color: colors.muted }]}>Conturile au nevoie de server cu baza de date configurată. Pentru elevi minori, creați asocierea cu părintele înainte de pilot.</Text>
           </>}
           {accountNotice ? <Text accessibilityRole="alert" style={[styles.accountBody, { color: accountNoticeIsError ? colors.error : colors.success, marginTop: 10 }]}>{accountNotice}</Text> : null}
@@ -697,11 +723,17 @@ export default function ProfileScreen() {
         <SectionHeading title="Colaborări cu școli și centre" />
         <SurfaceCard style={styles.accountCard}>
           <Text style={[styles.accountBody, { color: colors.muted }]}>
-            Discutăm parteneriate instituționale, programe pilot și coduri de acces pentru clase sau ateliere. Trimite o solicitare cu datele instituției și echipa revine prin e-mail.
+            Centrele educaționale pot trimite o cerere direct din aplicație. După verificare, primesc un spațiu privat pentru materiale și elevi.
           </Text>
-          <Pressable accessibilityRole="button" onPress={() => setShowPartnership(true)} style={[styles.premiumAction, { borderColor: colors.primary }]}>
-            <Text style={[styles.premiumActionText, { color: colors.primary }]}>Solicită o colaborare</Text>
-            <MaterialIcons name="mail-outline" size={18} color={colors.primary} />
+          <Pressable accessibilityRole="button" onPress={() => {
+            if (user && user.accountType !== "educator") {
+              showAccountNotice("Deconectează-te pentru a crea separat un cont de reprezentant al centrului.", true);
+              return;
+            }
+            router.push("/(tabs)/center" as Href);
+          }} style={[styles.premiumAction, { borderColor: colors.primary }]}>
+            <Text style={[styles.premiumActionText, { color: colors.primary }]}>Deschide spațiul centrului</Text>
+            <MaterialIcons name="arrow-forward" size={18} color={colors.primary} />
           </Pressable>
         </SurfaceCard>
         {saved ? (
@@ -717,31 +749,6 @@ export default function ProfileScreen() {
           </View>
         ) : null}
       </ScrollView>
-      <Modal visible={showPartnership} transparent animationType="fade" onRequestClose={() => setShowPartnership(false)}>
-        <View style={styles.partnershipBackdrop}>
-          <View style={[styles.partnershipCard, { backgroundColor: colors.background }]}>
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-              <View style={styles.partnershipHeader}>
-                <Text style={[styles.accountTitle, { color: colors.foreground }]}>Colaborare educațională</Text>
-                <Pressable accessibilityRole="button" accessibilityLabel="Închide formularul" onPress={() => setShowPartnership(false)} hitSlop={8}>
-                  <MaterialIcons name="close" size={22} color={colors.muted} />
-                </Pressable>
-              </View>
-              <Text style={[styles.accountBody, { color: colors.muted }]}>Solicită detalii despre un program pilot sau coduri pentru o clasă ori un atelier.</Text>
-              <TextInput accessibilityLabel="Numele școlii sau centrului" value={schoolName} onChangeText={setSchoolName} placeholder="Școală / centru educațional" placeholderTextColor={colors.muted} style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border, marginTop: 10 }]} />
-              <TextInput accessibilityLabel="E-mail de contact" value={schoolEmail} onChangeText={setSchoolEmail} placeholder="E-mail de contact" placeholderTextColor={colors.muted} keyboardType="email-address" autoCapitalize="none" style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border }]} />
-              <TextInput accessibilityLabel="Detalii despre colaborare" value={schoolNotes} onChangeText={setSchoolNotes} placeholder="Tipul colaborării (opțional)" placeholderTextColor={colors.muted} multiline style={[styles.nameInput, styles.partnershipNotes, { color: colors.foreground, borderColor: colors.border }]} />
-              <Text style={[styles.premiumDetailText, { color: colors.muted }]}>
-                Se va deschide un e-mail precompletat către {PARTNERSHIPS_EMAIL}. Apasă „Trimite” în aplicația ta de e-mail pentru a transmite solicitarea.
-              </Text>
-              {partnershipNotice ? <Text accessibilityRole="alert" style={[styles.premiumDetailText, { color: colors.error }]}>{partnershipNotice}</Text> : null}
-              <Pressable accessibilityRole="button" onPress={() => void sendPartnershipRequest()} style={[styles.partnershipSend, { backgroundColor: colors.primary }]}>
-                <Text style={styles.partnershipSendText}>Deschide e-mailul precompletat</Text>
-              </Pressable>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </ScreenContainer>
   );
 }
@@ -896,14 +903,10 @@ const styles = StyleSheet.create({
   storageText: { flex: 1, fontSize: 11, lineHeight: 16 },
   accountCard: { gap: 8 },
   parentStudent: { borderTopWidth: 1, marginTop: 14, paddingTop: 12 },
+  reviewActions: { flexDirection: "row", gap: 10, marginTop: 6 },
+  reviewButton: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
   accountTitle: { fontSize: 15, fontWeight: "800" },
   accountBody: { fontSize: 12, lineHeight: 18 },
-  partnershipBackdrop: { flex: 1, justifyContent: "center", alignItems: "center", padding: 18, backgroundColor: "rgba(20, 20, 40, 0.56)" },
-  partnershipCard: { width: "100%", maxWidth: 520, maxHeight: "90%", borderRadius: 20, padding: 18 },
-  partnershipHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 },
-  partnershipNotes: { minHeight: 76, textAlignVertical: "top" },
-  partnershipSend: { minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 12, marginTop: 6, paddingHorizontal: 10 },
-  partnershipSendText: { color: "#FFFFFF", fontSize: 11, fontWeight: "900", textAlign: "center" },
   savedToast: {
     flexDirection: "row",
     alignItems: "center",

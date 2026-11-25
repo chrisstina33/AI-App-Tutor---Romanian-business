@@ -49,7 +49,7 @@ export const authAccounts = mysqlTable("auth_accounts", {
   userId: int("userId").notNull().primaryKey().references(() => users.id, { onDelete: "cascade" }),
   email: varchar("email", { length: 320 }).notNull().unique(),
   passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
-  accountType: mysqlEnum("accountType", ["student", "parent"]).notNull(),
+  accountType: mysqlEnum("accountType", ["student", "parent", "educator"]).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -112,6 +112,37 @@ export const centerMemberships = mysqlTable("center_memberships", {
   role: mysqlEnum("role", ["owner", "educator", "student"]).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [uniqueIndex("center_user_unique").on(table.centerId, table.userId)]);
+
+export const centerApplications = mysqlTable("center_applications", {
+  id: int("id").autoincrement().primaryKey(),
+  centerId: int("centerId").notNull().references(() => educationalCenters.id, { onDelete: "cascade" }).unique(),
+  applicantId: int("applicantId").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  details: text("details"),
+  status: mysqlEnum("status", ["pending", "approved", "rejected"]).default("pending").notNull(),
+  reviewedAt: timestamp("reviewedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("center_applications_status_idx").on(table.status)]);
+
+export const centerMaterials = mysqlTable("center_materials", {
+  id: int("id").autoincrement().primaryKey(),
+  centerId: int("centerId").notNull().references(() => educationalCenters.id, { onDelete: "cascade" }),
+  uploadedBy: int("uploadedBy").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 180 }).notNull(),
+  subject: varchar("subject", { length: 80 }),
+  fileName: varchar("fileName", { length: 255 }).notNull(),
+  mimeType: varchar("mimeType", { length: 100 }).notNull(),
+  storageKey: varchar("storageKey", { length: 512 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("center_materials_center_idx").on(table.centerId)]);
+
+export const centerAccessCodes = mysqlTable("center_access_codes", {
+  codeHash: varchar("codeHash", { length: 64 }).notNull().primaryKey(),
+  centerId: int("centerId").notNull().references(() => educationalCenters.id, { onDelete: "cascade" }),
+  createdBy: int("createdBy").notNull().references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expiresAt").notNull(),
+  active: int("active").notNull().default(1),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("center_access_codes_center_idx").on(table.centerId)]);
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;

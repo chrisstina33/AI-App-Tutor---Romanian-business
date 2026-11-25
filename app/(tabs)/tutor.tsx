@@ -36,6 +36,7 @@ import { useColors } from "@/hooks/use-colors";
 import { useLearnerData } from "@/lib/learner-context";
 import { SUBJECTS } from "@/lib/app-data";
 import { ro } from "@/lib/i18n";
+import { compressImageForUpload } from "@/lib/image-compression";
 import { generateLearningPdf } from "@/lib/pdf";
 import {
   clearPendingUploads,
@@ -124,6 +125,7 @@ export default function TutorScreen() {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [showTutorSetup, setShowTutorSetup] = useState(false);
   const scrollRef = useRef<ScrollViewInstance>(null);
+  const chatStartedRef = useRef(false);
   const assistantMutation = trpc.assistant.chat.useMutation();
   const voiceMutation = trpc.assistant.transcribe.useMutation();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -206,7 +208,9 @@ export default function TutorScreen() {
     void fetch(`${getApiBaseUrl()}/api/health`, { signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        if (active) setNotice("Serverul tutorului este pregătit. Scrie problema sau atașează tema.");
+        if (active && !chatStartedRef.current) {
+          setNotice("Serverul tutorului este pregătit. Scrie problema sau atașează tema.");
+        }
       })
       .catch((error: unknown) => {
         if (!active || controller.signal.aborted) return;
@@ -214,7 +218,9 @@ export default function TutorScreen() {
           "[Tutor] API warm-up failed",
           error instanceof Error ? error.message : "unknown error",
         );
-        setNotice("Serverul poate avea nevoie de timp pentru pornire. Scrie problema sau atașează tema, apoi încearcă din nou.");
+        if (!chatStartedRef.current) {
+          setNotice("Serverul poate avea nevoie de timp pentru pornire. Scrie problema sau atașează tema, apoi încearcă din nou.");
+        }
       });
     return () => {
       active = false;
@@ -277,8 +283,10 @@ export default function TutorScreen() {
     if ((!question && !uploads.length) || pending || !messagesLoaded) return;
     const submittedUploads = uploads;
     const questionText = question || `Ajută-mă să înțeleg tema atașată (${uploads.map((file) => file.name).join(", ")}).`;
+    chatStartedRef.current = true;
     setInput("");
     setPending(true);
+    setNotice(ro.aiRequestPending);
     const userMessage: TutorMessage = {
       id: createMessageId("user"),
       role: "user",
@@ -288,15 +296,20 @@ export default function TutorScreen() {
     };
     setMessages((current) => [...current, userMessage]);
     let recordedQuestion = false;
+    let requestSent = false;
+    let responseReceived = false;
     try {
-      const attachments = await Promise.all(submittedUploads.map(async (file) => ({
-        name: file.name,
-        mimeType: (file.mimeType ?? "text/plain") as "image/png" | "image/jpeg" | "application/pdf" | "text/plain",
-        base64: await readBase64(file.uri),
-      })));
+      const attachments = await Promise.all(submittedUploads.map(async (file) => {
+        const mimeType = (file.mimeType ?? "text/plain") as "image/png" | "image/jpeg" | "application/pdf" | "text/plain";
+        const contents = Platform.OS === "web" && mimeType.startsWith("image/")
+          ? await compressImageForUpload(file.uri)
+          : { base64: await readBase64(file.uri), mimeType };
+        return { name: file.name, ...contents };
+      }));
       if (attachments.reduce((total, file) => total + file.base64.length, 0) > 40_000_000) {
         throw new Error("Atașamentele depășesc 30 MB în total. Trimite mai puține poze sau fișiere odată.");
       }
+      requestSent = true;
       const live = await assistantMutation.mutateAsync({
         subject,
         mode: requestedMode,
@@ -314,6 +327,7 @@ export default function TutorScreen() {
         messages: history.slice(-12),
         ...(attachments.length ? { attachments } : {}),
       });
+      responseReceived = true;
       if (submittedUploads.length) {
         setUploads([]);
         await clearPendingUploads();
@@ -370,15 +384,19 @@ export default function TutorScreen() {
       if (!recordedQuestion) recordQuestion(subject);
       const detail = error instanceof Error ? error.message : "Eroare necunoscută";
       console.error("[Tutor] AI request failed", detail);
-      const networkFailure =
-        /fetch|network|timeout|failed to connect/i.test(detail);
-      setNotice(
-        networkFailure
-          ? Platform.OS === "web"
-            ? `Nu mă pot conecta la serverul AI (${getApiBaseUrl()}). Verifică dacă originea exactă a site-ului este permisă în CORS_ALLOWED_ORIGINS pe serverul API.`
-            : `Nu mă pot conecta la serverul AI (${getApiBaseUrl()}). Verifică internetul și dacă serviciul Render este pornit, apoi încearcă din nou.`
-          : `Cererea nu a putut fi procesată: ${detail}.`,
-      );
+      if (!responseReceived) {
+        setMessages((current) => current.filter((message) => message.id !== userMessage.id));
+        setInput(question);
+        setNotice(
+          requestSent
+            ? ro.aiRequestFailed
+            : detail.startsWith("Atașamentele depășesc")
+              ? detail
+              : "Fotografia sau fișierul nu a putut fi pregătit. Alege alt fișier și încearcă din nou.",
+        );
+      } else {
+        setNotice("Răspunsul a fost primit, dar nu a putut fi finalizat. Îl poți găsi în conversație.");
+      }
     } finally {
       setPending(false);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
@@ -858,7 +876,7 @@ export default function TutorScreen() {
             <View style={styles.typing}>
               <ActivityIndicator color={colors.primary} />
               <Text style={[styles.typingText, { color: colors.muted }]}>
-                Construiesc următorul pas…
+                AI-ul pregătește răspunsul…
               </Text>
             </View>
           ) : null}

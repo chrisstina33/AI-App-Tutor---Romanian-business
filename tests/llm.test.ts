@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   vi.resetModules();
@@ -61,7 +62,9 @@ describe("OpenRouter tutor provider", () => {
         headers: expect.objectContaining({
           authorization: "Bearer openrouter-test-key",
         }),
-        body: expect.stringContaining('"model":"openai/gpt-5-mini"'),
+        body: expect.stringMatching(
+          /"provider":\{"sort":"latency"\}.*"model":"openai\/gpt-5-mini"/,
+        ),
       }),
     );
   });
@@ -106,6 +109,30 @@ describe("OpenRouter tutor provider", () => {
       messages: [{ role: "user", content: "Explică o fracție." }],
       maxRetries: 0,
     })).rejects.toThrow("status 503");
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("aborts stalled provider requests after 45 seconds without retrying", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("OPENROUTER_API_KEY", "openrouter-test-key");
+    const fetchMock = vi.fn(
+      async (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { invokeLLM } = await import("../server/_core/llm");
+
+    const request = invokeLLM({
+      model: "gpt-5-mini",
+      messages: [{ role: "user", content: "Salut" }],
+    });
+    const rejection = expect(request).rejects.toThrow("timed out after 45 seconds");
+    await vi.advanceTimersByTimeAsync(45_000);
+    await rejection;
+
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 });

@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { tutorDiagramSchema, validateTutorDiagram, type TutorDiagram } from "../shared/tutor-diagram";
-import { invokeLLM, type Message, type MessageContent } from "./_core/llm";
+import { invokeLLM, LLMRequestTimeoutError, type Message, type MessageContent } from "./_core/llm";
 import { generateImage } from "./_core/imageGeneration";
 import { transcribeAudioBase64 } from "./_core/voiceTranscription";
 import { publicProcedure, router } from "./_core/trpc";
@@ -107,6 +108,11 @@ Folosește categoria schematic numai pentru explicații vizuale non-geometrice (
 
 În diagramă, include toate câmpurile cerute de schemă. Câmpurile textuale label fără etichetă trebuie să fie șirul gol. În analysis, evaluează exercițiul curent și nu deduce materia doar din selector. Materiile posibile includ Istorie, Geografie și Limba engleză; nivelul olimpiadă se folosește numai când exercițiul indică explicit pregătire pentru olimpiadă. Pentru date insuficiente folosește necunoscut și confidence sub 0.8. Folosește mastery="demonstrated" numai în modul check, după o încercare reală și corectă cu raționament; în celelalte moduri folosește unknown. Nu inventa clasa exactă.`;
 
+const conciseSystemPrompt = systemPrompt.replace(
+  /^[\s\S]*?(?=\n\nPentru formule,)/,
+  "Ești Elunariq, tutor în română. Adaptează explicațiile la materie, clasă și nivel; respectă programa și temele declarate. Nu ghici informațiile importante: cere clarificări, explică noțiunile necunoscute simplu și tratează scorul mini-quizului doar ca indiciu. Respectă metoda cerută.\n\nRespectă modul cerut: guided oferă un singur pas și o întrebare; hint un indiciu; concept ideea solicitată; example un exemplu; check verifică pasul; practice un exercițiu; summary o recapitulare și un mini-quiz; direct oferă soluția completă doar la cerere. În toate modurile, răspunde clar în cel mult 3–4 pași scurți, fără detalii sau pași nesolicitați.",
+);
+
 const diagramRequestTerms = /deseneaz\w*|desen\w*|schiț\w*|schit\w*|diagram\w*|reprezint\w*|ilustreaz\w*|draw\w*|sketch\w*|illustrat\w*/iu;
 const geometryFormulaTerms = /\b(?:formul\w*|arie\w*|perimetru\w*|volum\w*|apotem\w*|diagonal\w*|raza|raze|diametru\w*|circumferinț\w*|circumferint\w*|lungim\w*)\b/iu;
 const geometryContextTerms = /\b(?:geometr\w*|triunghi\w*|pătrat\w*|patrat\w*|dreptunghi\w*|paralelogram\w*|trapez\w*|cerc\w*|romb\w*|poligon\w*|unghi\w*)\b/iu;
@@ -164,6 +170,7 @@ export async function invokeTutorWithFallback<T>(
       };
     } catch (error) {
       lastError = error;
+      if (error instanceof LLMRequestTimeoutError) throw error;
       if (model !== fallbackModels[selected.model].at(-1)) {
         console.warn(`[Tutor] ${model} request failed; trying the next configured model.`);
       }
@@ -263,7 +270,7 @@ export const assistantRouter = router({
       const result = await invokeLLM({
         model,
         messages: [
-          { role: "system", content: `${systemPrompt}\n\nGenerează diagramă numai dacă întrebarea curentă o cere explicit; în explicația vizuală poate fi utilă doar dacă e exactă, simplă și potrivită clasei. La întrebările despre formule geometrice, nu inventa puncte sau etichete de figură în text și setează diagram=null dacă elevul nu cere explicit desen/diagramă. Folosește doar enunțul curent; nu copia diagrame anterioare. Dacă nu poți valida desenul sau nivelul de detaliu îl face confuz, setează diagram=null și explică printr-un singur pas de text. Pentru vectori folosește săgeți orientate și etichete cerute. În fizică, arată numai elementele și sensurile fizice relevante; nu adăuga calcule în desen. Unghi drept numai pentru 90° explicit. Pentru formule moleculare folosește diagrama chemistry; pentru ecuații stoechiometrice folosește reaction și verifică atomii.\n\nClasa declarată: „${input.schoolGrade ?? "Nu o precizez"}”. Nivel de experiență: „${input.learnerLevel ?? "Îmi formez încrederea"}”. Stil preferat: „${input.explanationStyle ?? "Scurt și clar"}”. Dacă elevul a precizat clasa, adaptează notația, vocabularul și complexitatea desenului la ea; nu introduce conținut din clase superioare decât dacă este cerut. Dacă materia aleasă nu corespunde cerinței, identific-o doar când ești sigur; altfel întreabă.` },
+          { role: "system", content: `${conciseSystemPrompt}\n\nGenerează diagramă numai dacă întrebarea curentă o cere explicit; în explicația vizuală poate fi utilă doar dacă e exactă, simplă și potrivită clasei. La întrebările despre formule geometrice, nu inventa puncte sau etichete de figură în text și setează diagram=null dacă elevul nu cere explicit desen/diagramă. Folosește doar enunțul curent; nu copia diagrame anterioare. Dacă nu poți valida desenul sau nivelul de detaliu îl face confuz, setează diagram=null și explică printr-un singur pas de text. Pentru vectori folosește săgeți orientate și etichete cerute. În fizică, arată numai elementele și sensurile fizice relevante; nu adăuga calcule în desen. Unghi drept numai pentru 90° explicit. Pentru formule moleculare folosește diagrama chemistry; pentru ecuații stoechiometrice folosește reaction și verifică atomii.\n\nClasa declarată: „${input.schoolGrade ?? "Nu o precizez"}”. Nivel de experiență: „${input.learnerLevel ?? "Îmi formez încrederea"}”. Stil preferat: „${input.explanationStyle ?? "Scurt și clar"}”. Dacă elevul a precizat clasa, adaptează notația, vocabularul și complexitatea desenului la ea; nu introduce conținut din clase superioare decât dacă este cerut. Dacă materia aleasă nu corespunde cerinței, identific-o doar când ești sigur; altfel întreabă.` },
           ...(input.mode === "direct" ? [{
             role: "system" as const,
             content: tutorModeInstruction(input.mode),
@@ -306,6 +313,16 @@ export const assistantRouter = router({
         throw new Error("Ghidul nu a returnat un răspuns.");
       }
       return { ...parsedResponse, diagram: subjectDiagram ?? null };
+    }).catch((error: unknown) => {
+      console.error("[Tutor] AI provider request failed", {
+        model: selected.model,
+        errorName: error instanceof Error ? error.name : "unknown",
+        errorMessage: error instanceof Error ? error.message.slice(0, 240) : "unknown",
+      });
+      throw new TRPCError({
+        code: "SERVICE_UNAVAILABLE",
+        message: "AI-ul se trezește sau întâmpină o problemă. Așteaptă câteva secunde și încearcă din nou.",
+      });
     });
     const tutorResponse = modelResult.result;
     let imageUrl: string | undefined;

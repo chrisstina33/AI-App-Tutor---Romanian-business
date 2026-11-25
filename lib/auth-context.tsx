@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { clearAuthToken, readAuthToken, saveAuthToken } from "@/lib/auth-session";
 import { trpc } from "@/lib/trpc";
 
-export type AuthUser = { id: number; name: string; email: string; accountType: "student" | "parent" };
+export type AuthUser = { id: number; name: string; email: string; accountType: "student" | "parent" | "educator"; role: "user" | "admin" };
 type AuthValue = { token: string | null; user: AuthUser | null; ready: boolean; beginSession: (token: string, user: AuthUser) => Promise<void>; endSession: () => Promise<void> };
 const AuthContext = createContext<AuthValue | null>(null);
 

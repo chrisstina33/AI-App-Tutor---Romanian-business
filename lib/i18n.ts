@@ -32,6 +32,8 @@ export const ro = {
   generatePdf: "Generează PDF",
   pdfReady: "PDF-ul este pregătit pentru partajare.",
   noAnswerYet: "Nu îți dau rezultatul încă. Vreau să văd mai întâi cum gândești.",
+  aiRequestPending: "AI-ul se trezește sau pregătește răspunsul. Așteaptă câteva secunde.",
+  aiRequestFailed: "AI-ul se trezește sau întâmpină o problemă. Așteaptă câteva secunde și încearcă din nou; întrebarea ta a fost păstrată.",
 } as const;
 
 export const subjectRomanian: Record<string, string> = {

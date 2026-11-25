@@ -52,7 +52,7 @@ async function createSession(userId: number) {
   await db.insert(authSessions).values({ tokenHash: hash(token), userId, expiresAt });
   return { token, expiresAt: expiresAt.toISOString() };
 }
-const accountPublic = (user: { id: number; name: string | null; email: string; accountType: "student" | "parent" }) => ({ id: user.id, name: user.name ?? "", email: user.email, accountType: user.accountType });
+const accountPublic = (user: { id: number; name: string | null; email: string; accountType: "student" | "parent" | "educator"; role: "user" | "admin" }) => ({ id: user.id, name: user.name ?? "", email: user.email, accountType: user.accountType, role: user.role });
 const attempts = new Map<string, { count: number; resetAt: number }>();
 function allowAttempt(key: string) {
   const now = Date.now();
@@ -63,7 +63,7 @@ function allowAttempt(key: string) {
 }
 
 export const authRouter = router({
-  signUp: publicProcedure.input(z.object({ name: z.string().trim().min(1).max(80), email: z.string().trim().email().max(320), password: z.string().min(10).max(128), accountType: z.enum(["student", "parent"]) })).mutation(async ({ input }) => {
+  signUp: publicProcedure.input(z.object({ name: z.string().trim().min(1).max(80), email: z.string().trim().email().max(320), password: z.string().min(10).max(128), accountType: z.enum(["student", "parent", "educator"]) })).mutation(async ({ input }) => {
     const db = await getDb(); if (!db) unavailable();
     const email = input.email.toLowerCase();
     allowAttempt(`signup:${email}`);
@@ -89,14 +89,14 @@ export const authRouter = router({
       if (error instanceof TRPCError) throw error;
       authDatabaseUnavailable("Sign-up", error);
     }
-    return { session: { token, expiresAt: expiresAt.toISOString() }, user: { id: userId, name: input.name, email, accountType: input.accountType } };
+    return { session: { token, expiresAt: expiresAt.toISOString() }, user: { id: userId, name: input.name, email, accountType: input.accountType, role: "user" as const } };
   }),
   signIn: publicProcedure.input(z.object({ email: z.string().trim().email().max(320), password: z.string().min(1).max(128) })).mutation(async ({ input }) => {
     allowAttempt(`signin:${input.email.toLowerCase()}`);
     const db = await getDb(); if (!db) unavailable();
-    let rows: { id: number; name: string | null; email: string; accountType: "student" | "parent"; passwordHash: string }[];
+    let rows: { id: number; name: string | null; email: string; accountType: "student" | "parent" | "educator"; role: "user" | "admin"; passwordHash: string }[];
     try {
-      rows = await db.select({ id: users.id, name: users.name, email: authAccounts.email, accountType: authAccounts.accountType, passwordHash: authAccounts.passwordHash }).from(authAccounts).innerJoin(users, eq(users.id, authAccounts.userId)).where(eq(authAccounts.email, input.email.toLowerCase())).limit(1);
+      rows = await db.select({ id: users.id, name: users.name, email: authAccounts.email, accountType: authAccounts.accountType, role: users.role, passwordHash: authAccounts.passwordHash }).from(authAccounts).innerJoin(users, eq(users.id, authAccounts.userId)).where(eq(authAccounts.email, input.email.toLowerCase())).limit(1);
     } catch (error) {
       authDatabaseUnavailable("Sign-in", error);
     }

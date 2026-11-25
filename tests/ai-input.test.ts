@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { invokeTutorWithFallback, isImageGenerationRequest, modelFor, parseTutorResponse, shouldOmitGeometryDiagram, tutorChatInputSchema, tutorModeInstruction } from "../server/ai";
+import { LLMRequestTimeoutError } from "../server/_core/llm";
 import { buildQuickActionQuestion, buildTutorPrompt, googleImagesSearchUrl } from "../services/ai-service";
 import { parseAdditionalTopics } from "../services/tutor-onboarding";
 
@@ -212,6 +213,18 @@ describe("tutor chat input", () => {
 
     expect(tried).toEqual(["gpt-5-mini", "gpt-5"]);
     expect(result).toEqual({ result: "Răspuns", model: "gpt-5", tier: "medium" });
+  });
+
+  it("does not start another model request after a provider timeout", async () => {
+    const invoke = vi.fn(async () => {
+      throw new LLMRequestTimeoutError();
+    });
+
+    await expect(invokeTutorWithFallback(
+      { model: "gpt-5-mini", tier: "low" },
+      invoke,
+    )).rejects.toBeInstanceOf(LLMRequestTimeoutError);
+    expect(invoke).toHaveBeenCalledOnce();
   });
 });
 
