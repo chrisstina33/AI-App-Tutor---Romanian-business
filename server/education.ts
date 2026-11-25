@@ -6,6 +6,7 @@ import {
   authAccounts,
   centerAccessCodes,
   centerApplications,
+  centerJoinRequests,
   centerMaterials,
   centerMemberships,
   educationalCenters,
@@ -123,6 +124,7 @@ export const educationRouter = router({
         id: educationalCenters.id,
         name: educationalCenters.name,
         status: educationalCenters.status,
+        studentJoinMode: educationalCenters.studentJoinMode,
         applicationStatus: centerApplications.status,
         accessCodeExpiresAt: centerAccessCodes.expiresAt,
       })
@@ -143,6 +145,21 @@ export const educationRouter = router({
         .from(centerMemberships)
         .innerJoin(users, eq(users.id, centerMemberships.userId))
         .where(and(eq(centerMemberships.centerId, center.id), eq(centerMemberships.role, "student")));
+      const joinRequests = center.status === "active"
+        ? await db.select({
+          id: centerJoinRequests.id,
+          studentId: users.id,
+          studentName: users.name,
+          createdAt: centerJoinRequests.createdAt,
+        })
+          .from(centerJoinRequests)
+          .innerJoin(users, eq(users.id, centerJoinRequests.studentId))
+          .where(and(
+            eq(centerJoinRequests.centerId, center.id),
+            eq(centerJoinRequests.status, "pending"),
+          ))
+          .orderBy(centerJoinRequests.createdAt)
+        : [];
       const materials = await db.select({
         id: centerMaterials.id,
         title: centerMaterials.title,
@@ -159,6 +176,7 @@ export const educationRouter = router({
         center: {
           ...center,
           students,
+          joinRequests: joinRequests.map((request) => ({ ...request, createdAt: request.createdAt.toISOString() })),
           materials: materials.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })),
         },
       };
@@ -175,6 +193,20 @@ export const educationRouter = router({
         eq(centerMemberships.role, "student"),
         eq(educationalCenters.status, "active"),
       ));
+    const directory = await db.select({
+      id: educationalCenters.id,
+      name: educationalCenters.name,
+      studentJoinMode: educationalCenters.studentJoinMode,
+      requestStatus: centerJoinRequests.status,
+    })
+      .from(educationalCenters)
+      .leftJoin(centerJoinRequests, and(
+        eq(centerJoinRequests.centerId, educationalCenters.id),
+        eq(centerJoinRequests.studentId, ctx.user!.id),
+      ))
+      .where(eq(educationalCenters.status, "active"))
+      .orderBy(educationalCenters.name);
+    const memberCenterIds = new Set(centers.map((center) => center.id));
     const spaces = await Promise.all(centers.map(async (center) => {
       const materials = await db.select({
         id: centerMaterials.id,
@@ -192,8 +224,33 @@ export const educationRouter = router({
         materials: materials.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })),
       };
     }));
-    return { kind: "student" as const, centers: spaces };
+    return {
+      kind: "student" as const,
+      centers: spaces,
+      directory: directory.filter((center) => !memberCenterIds.has(center.id)),
+    };
   }),
+
+  setStudentJoinMode: protectedProcedure
+    .input(z.object({ mode: z.enum(["approval", "automatic"]) }))
+    .mutation(async ({ ctx, input }) => {
+      requireEducator(ctx.user!.accountType);
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Baza de date nu este configurată." });
+      const ownerRows = await db.select({ centerId: centerMemberships.centerId, status: educationalCenters.status })
+        .from(centerMemberships)
+        .innerJoin(educationalCenters, eq(educationalCenters.id, centerMemberships.centerId))
+        .where(and(eq(centerMemberships.userId, ctx.user!.id), eq(centerMemberships.role, "owner")))
+        .limit(1);
+      const owner = ownerRows[0];
+      if (!owner || owner.status !== "active") {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Setarea este disponibilă după aprobarea centrului." });
+      }
+      await db.update(educationalCenters)
+        .set({ studentJoinMode: input.mode })
+        .where(eq(educationalCenters.id, owner.centerId));
+      return { ok: true };
+    }),
 
   uploadMaterial: protectedProcedure
     .input(z.object({
@@ -285,9 +342,151 @@ export const educationRouter = router({
       const existing = await db.select({ id: centerMemberships.id }).from(centerMemberships)
         .where(and(eq(centerMemberships.centerId, center.centerId), eq(centerMemberships.userId, ctx.user!.id)))
         .limit(1);
-      if (existing.length) return { ok: true, alreadyMember: true };
-      await db.insert(centerMemberships).values({ centerId: center.centerId, userId: ctx.user!.id, role: "student" });
-      return { ok: true, alreadyMember: false };
+      const alreadyMember = existing.length > 0;
+      await db.transaction(async (tx) => {
+        if (!alreadyMember) {
+          await tx.insert(centerMemberships).values({ centerId: center.centerId, userId: ctx.user!.id, role: "student" });
+        }
+        await tx.update(centerJoinRequests)
+          .set({ status: "approved", reviewedAt: new Date() })
+          .where(and(
+            eq(centerJoinRequests.centerId, center.centerId),
+            eq(centerJoinRequests.studentId, ctx.user!.id),
+            eq(centerJoinRequests.status, "pending"),
+          ));
+      });
+      return { ok: true, alreadyMember };
+    }),
+
+  requestStudentJoin: protectedProcedure
+    .input(z.object({ centerId: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      requireStudent(ctx.user!.accountType);
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Baza de date nu este configurată." });
+      const [center] = await db.select({
+        id: educationalCenters.id,
+        studentJoinMode: educationalCenters.studentJoinMode,
+      })
+        .from(educationalCenters)
+        .where(and(
+          eq(educationalCenters.id, input.centerId),
+          eq(educationalCenters.status, "active"),
+        ))
+        .limit(1);
+      if (!center) throw new TRPCError({ code: "NOT_FOUND", message: "Centrul nu există sau nu este activ." });
+
+      return db.transaction(async (tx) => {
+        const [membership] = await tx.select({ id: centerMemberships.id })
+          .from(centerMemberships)
+          .where(and(
+            eq(centerMemberships.centerId, center.id),
+            eq(centerMemberships.userId, ctx.user!.id),
+          ))
+          .limit(1);
+        if (membership) return { status: "member" as const };
+
+        const [existingRequest] = await tx.select({
+          id: centerJoinRequests.id,
+          status: centerJoinRequests.status,
+        })
+          .from(centerJoinRequests)
+          .where(and(
+            eq(centerJoinRequests.centerId, center.id),
+            eq(centerJoinRequests.studentId, ctx.user!.id),
+          ))
+          .limit(1);
+        if (existingRequest?.status === "pending") return { status: "pending" as const };
+
+        const status = center.studentJoinMode === "automatic" ? "approved" : "pending";
+        const reviewedAt = status === "approved" ? new Date() : null;
+        if (existingRequest) {
+          await tx.update(centerJoinRequests)
+            .set({ status, reviewedAt, createdAt: new Date() })
+            .where(eq(centerJoinRequests.id, existingRequest.id));
+        } else {
+          await tx.insert(centerJoinRequests).values({
+            centerId: center.id,
+            studentId: ctx.user!.id,
+            status,
+            reviewedAt,
+          });
+        }
+        if (status === "approved") {
+          await tx.insert(centerMemberships).values({
+            centerId: center.id,
+            userId: ctx.user!.id,
+            role: "student",
+          });
+          return { status: "joined" as const };
+        }
+        return { status: "pending" as const };
+      });
+    }),
+
+  reviewStudentJoinRequest: protectedProcedure
+    .input(z.object({
+      requestId: z.number().int().positive(),
+      decision: z.enum(["approved", "rejected"]),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      requireEducator(ctx.user!.accountType);
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Baza de date nu este configurată." });
+      const [owner] = await db.select({
+        centerId: centerMemberships.centerId,
+        status: educationalCenters.status,
+      })
+        .from(centerMemberships)
+        .innerJoin(educationalCenters, eq(educationalCenters.id, centerMemberships.centerId))
+        .where(and(
+          eq(centerMemberships.userId, ctx.user!.id),
+          eq(centerMemberships.role, "owner"),
+        ))
+        .limit(1);
+      if (!owner || owner.status !== "active") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Doar reprezentantul unui centru activ poate analiza cererile." });
+      }
+
+      await db.transaction(async (tx) => {
+        const [request] = await tx.select({ studentId: centerJoinRequests.studentId })
+          .from(centerJoinRequests)
+          .where(and(
+            eq(centerJoinRequests.id, input.requestId),
+            eq(centerJoinRequests.centerId, owner.centerId),
+            eq(centerJoinRequests.status, "pending"),
+          ))
+          .limit(1);
+        if (!request) {
+          throw new TRPCError({ code: "CONFLICT", message: "Cererea a fost deja analizată sau nu mai există." });
+        }
+        const [updated] = await tx.update(centerJoinRequests)
+          .set({ status: input.decision, reviewedAt: new Date() })
+          .where(and(
+            eq(centerJoinRequests.id, input.requestId),
+            eq(centerJoinRequests.status, "pending"),
+          ));
+        if (!updated.affectedRows) {
+          throw new TRPCError({ code: "CONFLICT", message: "Cererea a fost deja analizată sau nu mai există." });
+        }
+        if (input.decision === "approved") {
+          const [membership] = await tx.select({ id: centerMemberships.id })
+            .from(centerMemberships)
+            .where(and(
+              eq(centerMemberships.centerId, owner.centerId),
+              eq(centerMemberships.userId, request.studentId),
+            ))
+            .limit(1);
+          if (!membership) {
+            await tx.insert(centerMemberships).values({
+              centerId: owner.centerId,
+              userId: request.studentId,
+              role: "student",
+            });
+          }
+        }
+      });
+      return { ok: true };
     }),
 
   downloadMaterial: protectedProcedure

@@ -36,6 +36,13 @@
       "when": 1795595581605,
       "tag": "0004_education_spaces",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1795596587511,
+      "tag": "0005_center_join_requests",
+      "breakpoints": true
     }
   ]
 }

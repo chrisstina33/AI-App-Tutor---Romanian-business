@@ -101,6 +101,7 @@ export const educationalCenters = mysqlTable("educational_centers", {
   name: varchar("name", { length: 180 }).notNull(),
   billingEmail: varchar("billingEmail", { length: 320 }),
   status: mysqlEnum("status", ["draft", "active", "suspended"]).default("draft").notNull(),
+  studentJoinMode: mysqlEnum("studentJoinMode", ["approval", "automatic"]).default("approval").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -143,6 +144,18 @@ export const centerAccessCodes = mysqlTable("center_access_codes", {
   active: int("active").notNull().default(1),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [index("center_access_codes_center_idx").on(table.centerId)]);
+
+export const centerJoinRequests = mysqlTable("center_join_requests", {
+  id: int("id").autoincrement().primaryKey(),
+  centerId: int("centerId").notNull().references(() => educationalCenters.id, { onDelete: "cascade" }),
+  studentId: int("studentId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  status: mysqlEnum("status", ["pending", "approved", "rejected"]).default("pending").notNull(),
+  reviewedAt: timestamp("reviewedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("center_join_request_unique").on(table.centerId, table.studentId),
+  index("center_join_requests_center_status_idx").on(table.centerId, table.status),
+]);
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;

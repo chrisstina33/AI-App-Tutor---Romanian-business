@@ -44,10 +44,19 @@ type EducatorCenter = {
   id: number;
   name: string;
   status: "draft" | "active" | "suspended";
+  studentJoinMode: "approval" | "automatic";
   applicationStatus: "pending" | "approved" | "rejected" | null;
   accessCodeExpiresAt: Date | null;
   students: { id: number; name: string | null }[];
+  joinRequests: { id: number; studentId: number; studentName: string | null; createdAt: string }[];
   materials: CenterMaterial[];
+};
+
+type JoinableCenter = {
+  id: number;
+  name: string;
+  studentJoinMode: "approval" | "automatic";
+  requestStatus: "pending" | "approved" | "rejected" | null;
 };
 
 async function readFileAsBase64(uri: string): Promise<string> {
@@ -75,11 +84,15 @@ export default function CenterScreen() {
   const uploadMutation = trpc.education.uploadMaterial.useMutation();
   const codeMutation = trpc.education.createStudentAccessCode.useMutation();
   const joinMutation = trpc.education.joinCenter.useMutation();
+  const studentJoinMutation = trpc.education.requestStudentJoin.useMutation();
+  const joinModeMutation = trpc.education.setStudentJoinMode.useMutation();
+  const reviewJoinMutation = trpc.education.reviewStudentJoinRequest.useMutation();
   const downloadMutation = trpc.education.downloadMaterial.useMutation();
   const [centerName, setCenterName] = useState("");
   const [contactEmail, setContactEmail] = useState(user?.email ?? "");
   const [applicationDetails, setApplicationDetails] = useState("");
   const [joinCode, setJoinCode] = useState("");
+  const [centerSearch, setCenterSearch] = useState("");
   const [selectedFile, setSelectedFile] = useState<SelectedMaterial | null>(null);
   const [materialTitle, setMaterialTitle] = useState("");
   const [subject, setSubject] = useState("");
@@ -192,6 +205,45 @@ export default function CenterScreen() {
     }
   }
 
+  async function requestStudentJoin(centerId: number) {
+    showNotice("");
+    try {
+      const result = await studentJoinMutation.mutateAsync({ centerId });
+      await workspace.refetch();
+      showNotice(result.status === "joined"
+        ? "Te-ai înscris în centrul educațional."
+        : result.status === "member"
+          ? "Ești deja înscris în acest centru."
+          : "Cererea a fost trimisă și așteaptă aprobarea centrului.");
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Cererea de înscriere nu a putut fi trimisă.", true);
+    }
+  }
+
+  async function setStudentJoinMode(mode: "approval" | "automatic") {
+    showNotice("");
+    try {
+      await joinModeMutation.mutateAsync({ mode });
+      await workspace.refetch();
+      showNotice(mode === "automatic"
+        ? "Elevii se vor înscrie automat când solicită acces."
+        : "Cererile elevilor vor necesita aprobarea ta.");
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Setarea înscrierii nu a putut fi salvată.", true);
+    }
+  }
+
+  async function reviewStudentJoinRequest(requestId: number, decision: "approved" | "rejected") {
+    showNotice("");
+    try {
+      await reviewJoinMutation.mutateAsync({ requestId, decision });
+      await workspace.refetch();
+      showNotice(decision === "approved" ? "Elevul a fost acceptat în centru." : "Cererea elevului a fost respinsă.");
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Cererea nu a putut fi analizată.", true);
+    }
+  }
+
   async function openMaterial(materialId: number) {
     showNotice("");
     try {
@@ -241,6 +293,8 @@ export default function CenterScreen() {
               contactEmail={contactEmail}
               applicationDetails={applicationDetails}
               accessCode={accessCode}
+              joinModePending={joinModeMutation.isPending}
+              reviewPending={reviewJoinMutation.isPending}
               selectedFile={selectedFile}
               materialTitle={materialTitle}
               subject={subject}
@@ -248,6 +302,8 @@ export default function CenterScreen() {
               codePending={codeMutation.isPending}
               applicationPending={requestMutation.isPending}
               onCreateCode={() => void createStudentCode()}
+              onJoinModeChange={(mode) => void setStudentJoinMode(mode)}
+              onReviewJoinRequest={(id, decision) => void reviewStudentJoinRequest(id, decision)}
               onCenterNameChange={setCenterName}
               onContactEmailChange={setContactEmail}
               onApplicationDetailsChange={setApplicationDetails}
@@ -269,11 +325,16 @@ export default function CenterScreen() {
           ) : (
             <StudentSpace
               centers={workspace.data?.kind === "student" ? workspace.data.centers : []}
+              directory={workspace.data?.kind === "student" ? workspace.data.directory : []}
               colors={colors}
               joinCode={joinCode}
+              centerSearch={centerSearch}
               joinPending={joinMutation.isPending}
+              studentJoinPending={studentJoinMutation.isPending}
               onJoinCodeChange={setJoinCode}
+              onCenterSearchChange={setCenterSearch}
               onJoin={() => void enrollInCenter()}
+              onRequestJoin={(centerId) => void requestStudentJoin(centerId)}
               onOpenMaterial={(id) => void openMaterial(id)}
             />
           )
@@ -295,6 +356,8 @@ function EducatorSpace({
   contactEmail,
   applicationDetails,
   accessCode,
+  joinModePending,
+  reviewPending,
   selectedFile,
   materialTitle,
   subject,
@@ -302,6 +365,8 @@ function EducatorSpace({
   codePending,
   applicationPending,
   onCreateCode,
+  onJoinModeChange,
+  onReviewJoinRequest,
   onCenterNameChange,
   onContactEmailChange,
   onApplicationDetailsChange,
@@ -319,6 +384,8 @@ function EducatorSpace({
   contactEmail: string;
   applicationDetails: string;
   accessCode: string;
+  joinModePending: boolean;
+  reviewPending: boolean;
   selectedFile: SelectedMaterial | null;
   materialTitle: string;
   subject: string;
@@ -326,6 +393,8 @@ function EducatorSpace({
   codePending: boolean;
   applicationPending: boolean;
   onCreateCode: () => void;
+  onJoinModeChange: (mode: "approval" | "automatic") => void;
+  onReviewJoinRequest: (id: number, decision: "approved" | "rejected") => void;
   onCenterNameChange: (value: string) => void;
   onContactEmailChange: (value: string) => void;
   onApplicationDetailsChange: (value: string) => void;
@@ -369,6 +438,34 @@ function EducatorSpace({
             <ActionButton label={codePending ? "Se generează…" : "Generează cod de înscriere"} disabled={codePending} onPress={onCreateCode} />
             {accessCode ? <Text selectable style={[styles.code, { color: colors.primary }]}>{accessCode}</Text> : null}
             {center.accessCodeExpiresAt ? <Text style={[styles.caption, { color: colors.muted }]}>Codul activ expiră la {new Date(center.accessCodeExpiresAt).toLocaleDateString("ro-RO")}.</Text> : null}
+            <Text style={[styles.body, { color: colors.foreground }]}>Înscrierea prin solicitare</Text>
+            <Text style={[styles.caption, { color: colors.muted }]}>Alege dacă solicitările din director sunt acceptate automat sau necesită aprobarea ta. Codurile rămân o înscriere directă.</Text>
+            <View style={styles.actionRow}>
+              <ModeButton label="Cu aprobare" selected={center.studentJoinMode === "approval"} disabled={joinModePending} onPress={() => onJoinModeChange("approval")} />
+              <ModeButton label="Automat" selected={center.studentJoinMode === "automatic"} disabled={joinModePending} onPress={() => onJoinModeChange("automatic")} />
+            </View>
+            {center.joinRequests.length ? (
+              <>
+                <Text style={[styles.body, { color: colors.foreground }]}>Cereri de înscriere ({center.joinRequests.length})</Text>
+                {center.studentJoinMode === "automatic"
+                  ? <Text style={[styles.caption, { color: colors.muted }]}>Solicitările deja trimise rămân aici până le analizezi.</Text>
+                  : null}
+                {center.joinRequests.map((request) => (
+                  <View key={request.id} style={[styles.requestRow, { borderColor: colors.border }]}>
+                    <View style={styles.centerCopy}>
+                      <Text style={[styles.body, { color: colors.foreground }]}>{request.studentName || "Elev"}</Text>
+                      <Text style={[styles.caption, { color: colors.muted }]}>{new Date(request.createdAt).toLocaleDateString("ro-RO")}</Text>
+                    </View>
+                    <Pressable accessibilityRole="button" disabled={reviewPending} onPress={() => onReviewJoinRequest(request.id, "rejected")}>
+                      <Text style={[styles.actionText, { color: colors.error }]}>Respinge</Text>
+                    </Pressable>
+                    <Pressable accessibilityRole="button" disabled={reviewPending} onPress={() => onReviewJoinRequest(request.id, "approved")}>
+                      <Text style={[styles.actionText, { color: colors.primary }]}>Acceptă</Text>
+                    </Pressable>
+                  </View>
+                ))}
+              </>
+            ) : null}
             {center.students.length ? center.students.map((student) => (
               <View key={student.id} style={[styles.studentRow, { borderColor: colors.border }]}>
                 <MaterialIcons name="person-outline" size={18} color={colors.primary} />
@@ -403,23 +500,65 @@ function EducatorSpace({
 
 function StudentSpace({
   centers,
+  directory,
   colors,
   joinCode,
+  centerSearch,
   joinPending,
+  studentJoinPending,
   onJoinCodeChange,
+  onCenterSearchChange,
   onJoin,
+  onRequestJoin,
   onOpenMaterial,
 }: {
   centers: { id: number; name: string; materials: CenterMaterial[] }[];
+  directory: JoinableCenter[];
   colors: ReturnType<typeof useColors>;
   joinCode: string;
+  centerSearch: string;
   joinPending: boolean;
+  studentJoinPending: boolean;
   onJoinCodeChange: (value: string) => void;
+  onCenterSearchChange: (value: string) => void;
   onJoin: () => void;
+  onRequestJoin: (centerId: number) => void;
   onOpenMaterial: (id: number) => void;
 }) {
+  const matchingCenters = directory.filter((center) => center.name.toLocaleLowerCase("ro").includes(centerSearch.trim().toLocaleLowerCase("ro")));
   return (
     <>
+      <SurfaceCard style={styles.card}>
+        <View style={[styles.iconWrap, { backgroundColor: `${colors.primary}15` }]}><MaterialIcons name="search" size={22} color={colors.primary} /></View>
+        <Text style={[styles.title, { color: colors.foreground }]}>Găsește un centru</Text>
+        <Text style={[styles.body, { color: colors.muted }]}>Caută centrul și solicită să te alături. Unele centre te acceptă automat, iar altele îți trimit cererea spre aprobare.</Text>
+        <TextInput value={centerSearch} onChangeText={onCenterSearchChange} placeholder="Caută după numele centrului" placeholderTextColor={colors.muted} style={[styles.input, { color: colors.foreground, borderColor: colors.border }]} />
+        {matchingCenters.length ? matchingCenters.map((center) => (
+          <View key={center.id} style={[styles.directoryRow, { borderColor: colors.border }]}>
+            <View style={styles.centerCopy}>
+              <Text style={[styles.body, { color: colors.foreground }]}>{center.name}</Text>
+              <Text style={[styles.caption, { color: colors.muted }]}>
+                {center.requestStatus === "pending"
+                  ? "Cererea așteaptă aprobarea"
+                  : center.requestStatus === "rejected"
+                    ? "Cererea anterioară a fost respinsă"
+                    : center.studentJoinMode === "automatic"
+                      ? "Înscriere automată"
+                      : "Necesită aprobarea centrului"}
+              </Text>
+            </View>
+            <ActionButton
+              label={center.requestStatus === "pending"
+                ? "În așteptare"
+                : center.studentJoinMode === "automatic"
+                  ? center.requestStatus === "rejected" ? "Încearcă din nou" : "Alătură-te"
+                  : center.requestStatus === "rejected" ? "Solicită din nou" : "Solicită acces"}
+              disabled={studentJoinPending || center.requestStatus === "pending"}
+              onPress={() => onRequestJoin(center.id)}
+            />
+          </View>
+        )) : <Text style={[styles.caption, { color: colors.muted }]}>{directory.length ? "Nu am găsit centre cu acest nume." : "Nu există centre active disponibile momentan."}</Text>}
+      </SurfaceCard>
       <SurfaceCard style={styles.card}>
         <View style={[styles.iconWrap, { backgroundColor: `${colors.primary}15` }]}><MaterialIcons name="vpn-key" size={22} color={colors.primary} /></View>
         <Text style={[styles.title, { color: colors.foreground }]}>Intră în spațiul centrului</Text>
@@ -479,6 +618,38 @@ function ActionButton({
   );
 }
 
+function ModeButton({
+  label,
+  selected,
+  disabled,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  disabled: boolean;
+  onPress: () => void;
+}) {
+  const colors = useColors();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected, disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={[
+        styles.modeButton,
+        {
+          backgroundColor: selected ? `${colors.primary}18` : colors.surface,
+          borderColor: selected ? colors.primary : colors.border,
+          opacity: disabled ? 0.55 : 1,
+        },
+      ]}
+    >
+      <Text style={[styles.actionText, { color: selected ? colors.primary : colors.muted }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   content: { paddingTop: 18, paddingBottom: 36, gap: 12 },
   card: { gap: 11 },
@@ -497,6 +668,9 @@ const styles = StyleSheet.create({
   actionRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   code: { fontSize: 22, fontWeight: "900", letterSpacing: 3 },
   studentRow: { flexDirection: "row", alignItems: "center", gap: 8, borderTopWidth: 1, paddingTop: 10 },
+  requestRow: { flexDirection: "row", alignItems: "center", gap: 12, borderTopWidth: 1, paddingTop: 10 },
+  directoryRow: { flexDirection: "row", alignItems: "center", gap: 10, borderTopWidth: 1, paddingTop: 10 },
+  modeButton: { minHeight: 38, flex: 1, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
   materialRow: { minHeight: 54, flexDirection: "row", alignItems: "center", gap: 10, borderTopWidth: 1, paddingTop: 10 },
   materialTitle: { fontSize: 13, fontWeight: "800" },
   centerSection: { gap: 2 },
