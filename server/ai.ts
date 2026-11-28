@@ -144,6 +144,9 @@ export function modelFor(input: {
   if (input.hasAttachment || visualRequest || input.question.length > 1800) {
     return { model: "gpt-5.5", tier: "high" };
   }
+  if (input.visualMode) {
+    return { model: "gpt-5", tier: "medium" };
+  }
   const mediumComplexity = /mai mulți pași|mai multe etape|pas cu pas|rezolvă complet|rezolvare completă|explică în detaliu|explicați\w* complex\w*|explicație complexă|demonstrează|arată derivarea|compară|multi-step|step by step|stoichiometr\w*|stoechiometr\w*|reacți\w*|echilibr\w* chimic\w*|balance\w* reaction\w*/iu;
   if (mediumComplexity.test(input.question) || input.question.length > 900) {
     return { model: "gpt-5", tier: "medium" };
@@ -270,7 +273,7 @@ export const assistantRouter = router({
       const result = await invokeLLM({
         model,
         messages: [
-          { role: "system", content: `${conciseSystemPrompt}\n\nGenerează diagramă numai dacă întrebarea curentă o cere explicit; în explicația vizuală poate fi utilă doar dacă e exactă, simplă și potrivită clasei. La întrebările despre formule geometrice, nu inventa puncte sau etichete de figură în text și setează diagram=null dacă elevul nu cere explicit desen/diagramă. Folosește doar enunțul curent; nu copia diagrame anterioare. Dacă nu poți valida desenul sau nivelul de detaliu îl face confuz, setează diagram=null și explică printr-un singur pas de text. Pentru vectori folosește săgeți orientate și etichete cerute. În fizică, arată numai elementele și sensurile fizice relevante; nu adăuga calcule în desen. Unghi drept numai pentru 90° explicit. Pentru formule moleculare folosește diagrama chemistry; pentru ecuații stoechiometrice folosește reaction și verifică atomii.\n\nClasa declarată: „${input.schoolGrade ?? "Nu o precizez"}”. Nivel de experiență: „${input.learnerLevel ?? "Îmi formez încrederea"}”. Stil preferat: „${input.explanationStyle ?? "Scurt și clar"}”. Dacă elevul a precizat clasa, adaptează notația, vocabularul și complexitatea desenului la ea; nu introduce conținut din clase superioare decât dacă este cerut. Dacă materia aleasă nu corespunde cerinței, identific-o doar când ești sigur; altfel întreabă.` },
+          { role: "system", content: `${conciseSystemPrompt}\n\nGenerează diagramă numai dacă întrebarea curentă o cere explicit sau modul vizual este activ; în modul vizual, include un desen doar dacă este exact, simplu și potrivit clasei. La întrebările despre formule geometrice, nu inventa puncte sau etichete de figură în text și setează diagram=null dacă elevul nu cere desen/diagramă și modul vizual nu este activ. Folosește doar enunțul curent; nu copia diagrame anterioare. Dacă nu poți valida desenul sau nivelul de detaliu îl face confuz, setează diagram=null și explică printr-un singur pas de text. Pentru vectori folosește săgeți orientate și etichete cerute. În fizică, arată numai elementele și sensurile fizice relevante; nu adăuga calcule în desen. Unghi drept numai pentru 90° explicit. Pentru formule moleculare folosește diagrama chemistry; pentru ecuații stoechiometrice folosește reaction și verifică atomii.\n\nClasa declarată: „${input.schoolGrade ?? "Nu o precizez"}”. Nivel de experiență: „${input.learnerLevel ?? "Îmi formez încrederea"}”. Stil preferat: „${input.explanationStyle ?? "Scurt și clar"}”. Dacă elevul a precizat clasa, adaptează notația, vocabularul și complexitatea desenului la ea; nu introduce conținut din clase superioare decât dacă este cerut. Dacă materia aleasă nu corespunde cerinței, identific-o doar când ești sigur; altfel întreabă.` },
           ...(input.mode === "direct" ? [{
             role: "system" as const,
             content: tutorModeInstruction(input.mode),

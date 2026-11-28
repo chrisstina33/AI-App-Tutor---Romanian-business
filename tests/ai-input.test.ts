@@ -130,7 +130,7 @@ describe("tutor chat input", () => {
     expect(modelFor({ mode: "direct", subject: "Biologie", question: "Analizează fotografia temei atașate." }))
       .toEqual({ model: "gpt-5-mini", tier: "low" });
     expect(modelFor({ mode: "concept", subject: "Biologie", question: "Explică fotosinteza.", visualMode: true }))
-      .toEqual({ model: "gpt-5-mini", tier: "low" });
+      .toEqual({ model: "gpt-5", tier: "medium" });
   });
 
   it("recognizes natural Romanian requests for generated pictures", () => {

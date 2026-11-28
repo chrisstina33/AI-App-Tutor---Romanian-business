@@ -1,5 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { parseTutorResponse } from "../server/ai";
+import { modelFor, parseTutorResponse } from "../server/ai";
+
+describe("tutor model selection", () => {
+  it("uses the medium tier for visual explanations without an explicit image request", () => {
+    expect(modelFor({
+      mode: "concept",
+      question: "Explică fotosinteza",
+      visualMode: true,
+    })).toEqual({ model: "gpt-5", tier: "medium" });
+  });
+
+  it("keeps explicit image requests on the high tier", () => {
+    expect(modelFor({
+      mode: "concept",
+      question: "Generează o imagine cu fotosinteza",
+      visualMode: true,
+    })).toEqual({ model: "gpt-5.5", tier: "high" });
+  });
+});
 
 describe("structured tutor responses", () => {
   it("uses the generated title and removes stray formatting symbols from the answer", () => {

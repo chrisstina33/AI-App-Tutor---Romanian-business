@@ -1,6 +1,6 @@
 # Audit de lansare Elunariq
 
-Data auditului: 27 octombrie 2026  
+Data auditului: 27 octombrie 2026 (prima jurizare)   ;  28-29 noiembrie 2026 (a doua jurizare)
 Sursă analizată: versiunea din `bionis (2).zip`, împreună cu `README.md`, `TODO.md`, `plan.md`, `Research sources — Romanian guided homework MVP.md` și `cost-calculator.mjs`.
 
 > Document istoric pentru arhiva menționată mai sus; nu descrie starea curentă a codului. Pentru funcțiile actuale, folosiți [starea funcțională](./functional-status.md) și [README](../README.md).
